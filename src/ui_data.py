@@ -45,13 +45,13 @@ def review_label(needs_review: bool) -> str:
 
 
 def reason_line(reason: Dict) -> str:
-    """ "The payment format is ACH — strong, 38% of the top-5 push"."""
-    return "%s — %s, %d%% of the top-5 push (%s the score)" % (
+    """Reason, strength and share; "(lowers the score)" only if it lowered it."""
+    line = "%s — %s, %d%% of the top-5 push" % (
         reason["text"],
         reason["strength"],
         reason["share_percent"],
-        reason["direction"],
     )
+    return line + (" (lowers the score)" if reason["direction"] == "lowers" else "")
 
 
 def load_queue(folder: Path) -> pd.DataFrame:

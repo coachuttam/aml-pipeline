@@ -131,6 +131,7 @@ DECISIONS = ("escalate", "close")  # what the analyst can choose
 CITED_COLOUR = "#fff3b0"  # row highlight for transactions the note cites
 ALERT_EDGE_COLOUR = "#d62728"  # the alert transaction in the network graph
 GRAPH_HEIGHT_PIXELS = 460  # height of the interactive network next to the table
+GRAPH_PADDING = 0.25  # extra axis room (share of the spread) so labels are not clipped
 CITED_EDGE_COLOUR = "#ff7f0e"  # transactions the note cites
 OTHER_EDGE_COLOUR = "#b0b0b0"  # other evidence transactions
 NODE_COLOUR = "#4c78a8"  # account dots

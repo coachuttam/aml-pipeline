@@ -11,7 +11,7 @@ import pytest
 from src import config
 from src.audit_log import latest_decision_by_alert, read_decisions, record_decision
 from src.reasons import display_reasons
-from src.ui_data import cited_ids, load_bundle, load_queue
+from src.ui_data import cited_ids, load_bundle, load_queue, reason_line
 from src.ui_graph import build_figure, graph_edges
 
 TXN = {
@@ -141,3 +141,21 @@ def test_ids_written_in_text_are_highlighted_too():
     note = {"cited_txn_ids": [1], "red_flags": ["A paid B (txn 2, 3)"],
             "investigator_questions": ["Why (txn 9)?"]}  # fmt: skip
     assert cited_ids({"note": note}) == [1, 2, 3, 9]
+
+
+def test_a_rising_reason_has_no_score_phrase_and_a_lowering_one_says_so():
+    rising = {
+        "text": "T",
+        "strength": "strong",
+        "share_percent": 50,
+        "direction": "raises",
+    }
+    assert reason_line(rising) == "T — strong, 50% of the top-5 push"
+    assert reason_line({**rising, "direction": "lowers"}).endswith("(lowers the score)")
+
+
+def test_graph_axes_have_padding_beyond_the_account_positions():
+    figure = build_figure(graph_edges(EVIDENCE, []))
+    xs = [x for t in figure.data[-1:] for x in t.x]
+    low, high = figure.layout.xaxis.range
+    assert low < min(xs) and high > max(xs)

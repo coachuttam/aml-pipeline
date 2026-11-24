@@ -119,17 +119,26 @@ def node_trace(positions: Dict[str, Any]) -> Any:
     )
 
 
+def padded_range(values: List[float]) -> List[float]:
+    """Axis limits with room on both sides so long account labels are not clipped."""
+    low, high = min(values), max(values)
+    pad = (high - low or 1.0) * config.GRAPH_PADDING
+    return [low - pad, high + pad]
+
+
 def build_figure(edges: List[Edge]) -> Any:
     """The interactive figure: edges first, account labels on top."""
     import plotly.graph_objects as go
 
     positions = layout(edges)
     figure = go.Figure(edge_traces(edges, positions) + [node_trace(positions)])
+    xs = [x for x, _ in positions.values()]
+    ys = [y for _, y in positions.values()]
     figure.update_layout(
         height=config.GRAPH_HEIGHT_PIXELS,
         margin={"l": 0, "r": 0, "t": 10, "b": 0},
-        xaxis={"visible": False},
-        yaxis={"visible": False},
+        xaxis={"visible": False, "range": padded_range(xs)},
+        yaxis={"visible": False, "range": padded_range(ys)},
         plot_bgcolor="rgba(0,0,0,0)",
     )
     return figure
