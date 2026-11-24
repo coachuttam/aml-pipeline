@@ -19,13 +19,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 
 from src import config
 from src.data import SECONDS_PER_DAY, account_names
+from src.evidence_flow import flow_selection
 from src.features_base import add_account_codes
 
 
@@ -96,16 +97,13 @@ def describe(index: EvidenceIndex, rows: np.ndarray, hop: int) -> List[Dict[str,
     ]
 
 
-def build_evidence(index: EvidenceIndex, row: int, alert_id: str) -> Dict[str, Any]:
-    """The evidence document for one alert (JSON-ready)."""
+def nearest_document(index: EvidenceIndex, row: int) -> Dict[str, Any]:
+    """Strategy "nearest": hop 1 first, then hop 2, the 50 nearest in time."""
     hops = hop_rows(index, row)
     room = config.EVIDENCE_MAX_EDGES
     kept_first = hops[1][:room]
     kept_second = hops[2][: room - len(kept_first)]
     return {
-        "alert_id": alert_id,
-        "alert_transaction": describe(index, np.array([row]), 0)[0],
-        "window_days": config.EVIDENCE_WINDOW_DAYS,
         "linked_transactions": describe(index, kept_first, 1)
         + describe(index, kept_second, 2),
         "counts": {
@@ -114,6 +112,52 @@ def build_evidence(index: EvidenceIndex, row: int, alert_id: str) -> Dict[str, A
             "included": int(len(kept_first) + len(kept_second)),
             "truncated": bool(len(hops[1]) + len(hops[2]) > room),
         },
+    }
+
+
+def flow_document(index: EvidenceIndex, row: int) -> Dict[str, Any]:
+    """Strategy "flow": 15 nearest hop-1 rows, then 35 along the money trail."""
+    nearest = hop_rows(index, row)[1]
+    first = nearest[: config.EVIDENCE_HOP1_EDGES]
+    skip = np.concatenate([first, [row]])
+    chosen, found = flow_selection(index, row, skip, config.EVIDENCE_FLOW_EDGES)
+    linked = describe(index, first, 1)
+    for direction, (step, _, flow_row) in chosen:
+        item = describe(index, np.array([flow_row]), 2)[0]
+        item.update({"flow": direction, "flow_step": step})
+        linked.append(item)
+    return {
+        "linked_transactions": linked,
+        "counts": {
+            "hop1_found": int(len(nearest)),
+            **found,
+            "included": len(linked),
+            "truncated": bool(
+                len(nearest) > len(first)
+                or found["onward_found"] + found["backward_found"] > len(chosen)
+            ),
+        },
+    }
+
+
+def build_evidence(
+    index: EvidenceIndex, row: int, alert_id: str, strategy: Optional[str] = None
+) -> Dict[str, Any]:
+    """The evidence document for one alert (JSON-ready)."""
+    strategy = strategy or config.EVIDENCE_STRATEGY
+    if strategy not in config.EVIDENCE_STRATEGIES:
+        raise ValueError("Unknown evidence strategy %r" % strategy)
+    body = (
+        nearest_document(index, row)
+        if strategy == "nearest"
+        else flow_document(index, row)
+    )
+    return {
+        "alert_id": alert_id,
+        "strategy": strategy,
+        "alert_transaction": describe(index, np.array([row]), 0)[0],
+        "window_days": config.EVIDENCE_WINDOW_DAYS,
+        **body,
     }
 
 

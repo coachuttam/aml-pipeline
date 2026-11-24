@@ -64,7 +64,17 @@ TOP_ALERTS = 200  # how many of the highest-scored test transactions become aler
 SHAP_REASONS_PER_ALERT = 5
 EVIDENCE_HOPS = 2
 EVIDENCE_WINDOW_DAYS = 7  # linked transactions within this many days either side
-EVIDENCE_MAX_EDGES = 50  # linked transactions kept per alert (nearest in time first)
+EVIDENCE_MAX_EDGES = 50  # linked transactions kept per alert
+EVIDENCE_HOP1_EDGES = (
+    15  # "flow" strategy: nearest-in-time transactions touching S or R
+)
+EVIDENCE_FLOW_EDGES = 35  # "flow" strategy: onward and backward along the money trail
+# "nearest": the 50 nearest in time within 2 hops. "flow": 15 nearest at hop 1, then
+# 35 along the money trail. "nearest" kept: mean pattern coverage 0.491 against 0.486
+# for "flow" on the 51 laundering alerts with a known pattern (README).
+EVIDENCE_STRATEGY = "nearest"
+EVIDENCE_STRATEGIES = ("nearest", "flow")
+EVIDENCE_NEAREST_FOLDER = "evidence_nearest"  # the other strategy, for comparison only
 
 # Metrics (same definitions as Project 2 and aml-gnn-transfer).
 PRECISION_AT_K = 100

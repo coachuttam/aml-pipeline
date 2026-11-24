@@ -16,8 +16,9 @@ Example:
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -26,6 +27,7 @@ from src import config
 
 BEGIN_PATTERN = re.compile(r"BEGIN LAUNDERING ATTEMPT - ([A-Z\-]+)")
 AMOUNT_DECIMALS = 2
+TIME_FORMAT = "%Y/%m/%d %H:%M"
 PatternKey = Tuple[str, str, str, str, str, float, float, str, str]
 # raw columns: time, from bank, from account, to bank, to account, amount received,
 # receiving currency, amount paid, payment currency, payment format, is laundering
@@ -74,7 +76,7 @@ def key_of_row(transactions: pd.DataFrame, row: int) -> PatternKey:
     """The pattern-file key of one transaction row."""
     line = transactions.iloc[row]
     return make_key(
-        line["timestamp"].strftime("%Y/%m/%d %H:%M"), str(line["from_bank"]),
+        line["timestamp"].strftime(TIME_FORMAT), str(line["from_bank"]),
         str(line["from_account"]), str(line["to_bank"]), str(line["to_account"]),
         line["amount_received"], line["amount_paid"],
         str(line["payment_currency"]), str(line["payment_format"]),
@@ -116,3 +118,34 @@ def write_ground_truth(table: pd.DataFrame, folder: Path) -> Path:
 def laundering_share(table: pd.DataFrame) -> float:
     """Share of the alerts that are laundering (precision at the number of alerts)."""
     return float(table["is_laundering"].mean()) if len(table) else 0.0
+
+
+def pattern_members(
+    patterns: Dict[PatternKey, Tuple[str, int]], transactions: pd.DataFrame
+) -> Dict[int, Set[int]]:
+    """For each pattern attempt, the edge ids of all its transactions in the data.
+
+    Only rows sharing a minute with a listed transaction are compared, so the
+    6.9 million rows are not all keyed.
+    """
+    if not patterns:
+        return {}
+    minutes = pd.to_datetime(sorted({key[0] for key in patterns}), format=TIME_FORMAT)
+    candidates = transactions[transactions["timestamp"].isin(minutes)]
+    members: Dict[int, Set[int]] = defaultdict(set)
+    columns = [
+        candidates[name]
+        for name in (
+            "edge_id", "timestamp", "from_bank", "from_account", "to_bank",
+            "to_account", "amount_received", "amount_paid", "payment_currency",
+            "payment_format",
+        )
+    ]  # fmt: skip
+    for edge, stamp, fb, fa, tb, ta, received, paid, currency, kind in zip(*columns):
+        key = make_key(
+            stamp.strftime(TIME_FORMAT), str(fb), str(fa), str(tb), str(ta),
+            received, paid, str(currency), str(kind),
+        )  # fmt: skip
+        if key in patterns:
+            members[patterns[key][1]].add(int(edge))
+    return dict(members)

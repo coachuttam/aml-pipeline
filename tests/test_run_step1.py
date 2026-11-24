@@ -63,3 +63,14 @@ def test_the_laundering_share_matches_the_ground_truth_table(finished) -> None:
     assert summary["laundering_share_of_alerts"] == pytest.approx(
         truth["is_laundering"].mean()
     )
+
+
+def test_both_evidence_strategies_are_built_and_compared(finished) -> None:
+    output, summary = finished
+    other = [n for n in config.EVIDENCE_STRATEGIES if n != config.EVIDENCE_STRATEGY][0]
+    assert (output / "evidence").is_dir() and (output / ("evidence_" + other)).is_dir()
+    assert set(summary["pattern_coverage"]) == {"nearest", "flow"}
+    assert summary["pattern_coverage"]["flow"]["alerts_with_known_pattern"] == 0
+    assert summary["laundering_alerts_with_known_pattern"] == 0
+    first = json.loads(next((output / "evidence").glob("*.json")).read_text())
+    assert first["strategy"] == config.EVIDENCE_STRATEGY

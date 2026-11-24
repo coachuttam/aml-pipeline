@@ -23,7 +23,7 @@ One pipeline on IBM's synthetic LI-Small data: **detect -> explain -> evidence -
 | Step | Output | Status |
 | --- | --- | --- |
 | 1a Detect | LightGBM (the aml-gnn-transfer Phase E final config) scores the LI-Small test period; top 200 alerts with score and SHAP top-5 reason codes -> `artifacts/alerts.parquet` | built |
-| 1b Evidence | Per alert, the linked transactions (2 hops, +/- 7 days, at most 50): id, accounts, amount, currency, format, time -> `artifacts/evidence/<alert_id>.json` | built |
+| 1b Evidence | Per alert, the linked transactions (2 hops, +/- 7 days, at most 50; "nearest" strategy, compared with a "follow the money" one by pattern coverage): id, accounts, amount, currency, format, time -> `artifacts/evidence/<alert_id>.json` | built |
 | 1c Ground truth | `is_laundering` and, if `LI-Small_Patterns.txt` is available, IBM pattern type -> `artifacts/ground_truth.parquet`, evaluation only | built |
 | 2 LLM case note | Draft note per alert from alert + reasons + evidence only, every claim cited to a transaction id | planned |
 | 3 Evaluation | Notes scored against ground truth (is the flagged pattern named correctly, are citations real, are claims supported) | planned |

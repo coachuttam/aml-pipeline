@@ -50,4 +50,9 @@ The Phase E final configuration of aml-gnn-transfer: all training labels (seed 0
 
 ## Evidence rules
 
-For an alert (S pays R at time T): hop 1 is other transactions touching S or R within +/- 7 days of T; hop 2 is transactions touching the accounts that hop 1 met. At most 50 are kept: hop 1 first, nearest in time first. Each file records how many existed and whether it was cut.
+For an alert (S pays R at time T), two strategies exist (`config.EVIDENCE_STRATEGY`, `src/evidence.py` and `src/evidence_flow.py`):
+
+- **nearest** (kept): hop 1 is other transactions touching S or R within +/- 7 days of T; hop 2 is transactions touching the accounts that hop 1 met. At most 50 are kept, hop 1 first, nearest in time first.
+- **flow**: up to 15 hop-1 transactions (nearest in time), then up to 35 along the money trail within 7 days: onward from R after T (and onward from the accounts R paid, after they received) and backward from S before T (and from the accounts that paid S, before they paid). Onward and backward take turns.
+
+Each file records how many linked transactions existed and whether it was cut. `src/evaluate.py` scores pattern coverage (evaluation only, uses the patterns file).
