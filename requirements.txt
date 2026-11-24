@@ -8,3 +8,5 @@ pyyaml
 matplotlib
 pytest
 ruff
+openai
+python-dotenv

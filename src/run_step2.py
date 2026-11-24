@@ -1,0 +1,77 @@
+"""Step 2: write an LLM case note for each alert, fact-check it, score it.
+
+    python -m src.run_step2 --set dev  --prompt v1     # 30 validation alerts
+    python -m src.run_step2 --set test --prompt v2     # the 200 test alerts
+
+The notes and the scores go to artifacts/dev/ (dev) or artifacts/ (test).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+from typing import Dict
+
+import pandas as pd
+
+from src import config
+from src.case_note_input import build_user_message, evidence_transactions
+from src.evaluate_step2 import evaluate_notes
+from src.fact_check import check_note, count_claims, total_cited
+from src.llm_client import make_client, request_note
+
+
+def note_for_alert(client, alert: Dict, evidence: Dict, version: str) -> Dict:
+    """One alert -> note (or None if the JSON was bad), violations and usage."""
+    result = request_note(client, build_user_message(alert, evidence), version)
+    try:
+        note = json.loads(result["content"])
+        violations, claims = check_note(note, evidence), count_claims(note)
+        by_id = {t["transaction_id"]: t for t in evidence_transactions(evidence)}
+        note["total_amount"] = round(total_cited(note, by_id), 2)  # computed in code
+    except (ValueError, KeyError, TypeError):
+        note, violations, claims = None, [], 0
+    return {
+        "alert_id": alert["alert_id"],
+        "note": note,
+        "violations": violations,
+        "claims": claims,
+        "input_tokens": result["input_tokens"],
+        "output_tokens": result["output_tokens"],
+        "seconds": result["seconds"],
+    }
+
+
+def run(folder: Path, version: str) -> Dict:
+    """Notes for every alert in `folder`; saves notes and the evaluation there."""
+    alerts = pd.read_parquet(folder / config.ALERTS_FILE)
+    client = make_client()
+    records = []
+    for alert in alerts.to_dict("records"):
+        name = "%s.json" % alert["alert_id"]
+        evidence = json.loads((folder / config.EVIDENCE_FOLDER / name).read_text())
+        records.append(note_for_alert(client, alert, evidence, version))
+    truth = pd.read_parquet(folder / config.GROUND_TRUTH_FILE)
+    report = evaluate_notes(records, truth, version)
+    notes_name = "notes_step2_%s.json" % version
+    (folder / notes_name).write_text(json.dumps(records, indent=1))
+    is_test = folder == config.ARTIFACTS_DIR
+    report_name = config.EVAL_STEP2_FILE if is_test else "eval_%s.json" % version
+    (folder / report_name).write_text(json.dumps(report, indent=1))
+    return report
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--set", choices=["dev", "test"], required=True)
+    parser.add_argument("--prompt", choices=config.PROMPT_VERSIONS, required=True)
+    arguments = parser.parse_args()
+    folder = config.ARTIFACTS_DIR
+    if arguments.set == "dev":
+        folder = folder / config.DEV_FOLDER
+    print(json.dumps(run(folder, arguments.prompt), indent=1))
+
+
+if __name__ == "__main__":
+    main()
