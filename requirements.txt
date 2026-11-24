@@ -10,3 +10,5 @@ pytest
 ruff
 openai
 python-dotenv
+streamlit
+networkx

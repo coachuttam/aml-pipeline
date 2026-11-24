@@ -122,3 +122,12 @@ TYPOLOGIES: Tuple[str, ...] = (
     "STACK",
 )
 UNCLEAR = "unclear"
+
+# Step 3: review UI (reads saved artifacts only).
+UI_NOTES_FILE = "notes_step2_v3.json"  # the notes the UI shows (prompt v3)
+UI_NOTE_VERSION = "v3"  # recorded in the audit log with each decision
+AUDIT_LOG_FILE = "audit_log.jsonl"  # in artifacts/, so it stays out of git
+DECISIONS = ("escalate", "close")  # what the analyst can choose
+CITED_COLOUR = "#fff3b0"  # row highlight for transactions the note cites
+ALERT_EDGE_COLOUR = "#d62728"  # the alert transaction in the network graph
+GRAPH_FIGURE_SIZE = (6.0, 4.2)  # inches; small enough to sit beside the table

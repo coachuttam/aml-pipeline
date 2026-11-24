@@ -27,7 +27,7 @@ One pipeline on IBM's synthetic LI-Small data: **detect -> explain -> evidence -
 | 1c Ground truth | `is_laundering` and, if `LI-Small_Patterns.txt` is available, IBM pattern type -> `artifacts/ground_truth.parquet`, evaluation only | built |
 | 2 LLM case note | Draft note per alert from alert + reasons + evidence only, every claim cited to a transaction id | built (prompt only; no LLM decision, 3 investigator questions, `needs_review` flag) |
 | 3 Evaluation | Notes scored against ground truth (is the flagged pattern named correctly, are citations real, are claims supported) | planned |
-| 4 UI | Alert list, reason codes, evidence table, case note | planned |
+| 4 UI | Alert list, reason codes, evidence table, case note | built (Streamlit, `app.py`) |
 
 ## 5. Non-goals (V1)
 

@@ -60,6 +60,15 @@ L=.venv/lib/python3.9/site-packages/lightgbm/lib/lib_lightgbm.dylib
 install_name_tool -add_rpath "$HOME/anaconda3/lib" "$L" && codesign --force -s - "$L"
 ```
 
+## Step 3: review UI
+
+```bash
+source .venv/bin/activate && pip install -r requirements.txt
+streamlit run app.py        # reads artifacts/ only; no API key needed
+```
+
+Pages: alert queue (filter, sort), alert detail (reasons, evidence with cited rows highlighted, network graph, case note, fact-check status), decision (escalate or close with a comment, saved to `artifacts/audit_log.jsonl`, git-ignored) and metrics with caveats. The optional "Regenerate note" button is the only live OpenAI call. A 5-minute script is in `docs/DEMO.md`.
+
 ## Limits
 
 - Step 2 needs `OPENAI_API_KEY` in `.env`; `python -m src.run_dev` then `python -m src.run_step2 --set dev|test --prompt v1|v2`.
