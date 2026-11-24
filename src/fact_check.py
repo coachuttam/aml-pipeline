@@ -15,6 +15,7 @@ from typing import Dict, List, Set
 from src import config
 from src.case_note_input import evidence_transactions
 
+CITED_IDS_IN_TEXT = re.compile(r"txns?\s+((?:\d+(?:,\s*|\s+and\s+|\s*))+)")
 MONEY_IN_TEXT = re.compile(r"\d[\d,]*\.\d{2}\b")  # "10,917.92": a decimal amount
 
 
@@ -50,11 +51,24 @@ def _check_accounts(note: Dict, transactions: List[Dict]) -> List[str]:
     ]
 
 
+def _check_text_ids(note: Dict, by_id: Dict[int, Dict]) -> List[str]:
+    """Transaction ids written as "(txn 12, 34)" in the text must exist too."""
+    text = " ".join(note["red_flags"] + note["investigator_questions"])
+    found = [
+        int(n)
+        for group in CITED_IDS_IN_TEXT.findall(text)
+        for n in re.findall(r"\d+", group)
+    ]
+    return ["txn id %s in text not in evidence" % t for t in found if t not in by_id]
+
+
 def _check_text_amounts(
     note: Dict, transactions: List[Dict], by_id: Dict[int, Dict]
 ) -> List[str]:
     allowed = _evidence_amounts(transactions) | {round(total_cited(note, by_id), 2)}
-    text = " ".join(note["red_flags"] + [note["reason"]])
+    text = " ".join(
+        note["red_flags"] + note["investigator_questions"] + [note["reason"]]
+    )
     found = [float(m.replace(",", "")) for m in MONEY_IN_TEXT.findall(text)]
     return [
         "amount %.2f in text not in evidence" % v
@@ -70,6 +84,7 @@ def check_note(note: Dict, evidence: Dict) -> List[str]:
     return (
         _check_ids(note, by_id)
         + _check_accounts(note, transactions)
+        + _check_text_ids(note, by_id)
         + _check_text_amounts(note, transactions, by_id)
     )
 

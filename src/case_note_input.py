@@ -50,7 +50,7 @@ def response_format() -> Dict:
         "key_accounts": text_list,
         "cited_txn_ids": {"type": "array", "items": {"type": "integer"}},
         "red_flags": text_list,
-        "decision": {"type": "string", "enum": ["escalate", "close"]},
+        "investigator_questions": text_list,
         "reason": {"type": "string"},
     }
     schema = {

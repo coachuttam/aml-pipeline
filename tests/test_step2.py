@@ -36,9 +36,15 @@ ALERT = {
 
 
 def good_note(**changes):
-    note = {"typology": "CYCLE", "key_accounts": ["A"], "cited_txn_ids": [1, 2],
-            "total_amount": 150.5, "red_flags": ["A paid 100.00 (txn 1)"],
-            "decision": "escalate", "reason": "ok"}  # fmt: skip
+    note = {
+        "typology": "CYCLE",
+        "key_accounts": ["A"],
+        "cited_txn_ids": [1, 2],
+        "total_amount": 150.5,
+        "red_flags": ["A paid 100.00 (txn 1)"],
+        "investigator_questions": ["Why did A pay B (txn 1)?"],
+        "reason": "ok",
+    }
     note.update(changes)
     return note
 
@@ -109,23 +115,24 @@ def test_cached_answer_is_returned_without_calling_the_model(tmp_path, monkeypat
     assert result["from_cache"] is True
 
 
-def test_evaluation_scores_decisions_typology_and_invented_facts():
+def test_evaluation_scores_typology_review_flags_and_invented_facts():
     records = [
         {"alert_id": "A1", "note": good_note(), "violations": [], "claims": 4,
-         "input_tokens": 1000, "output_tokens": 100, "seconds": 2.0},
-        {"alert_id": "A2", "note": good_note(typology="FAN_IN", decision="close"),
+         "input_tokens": 1000, "output_tokens": 100, "seconds": 2.0,
+         "needs_review": False},
+        {"alert_id": "A2", "note": good_note(typology="FAN_IN"),
          "violations": ["account Z not in evidence"], "claims": 4,
-         "input_tokens": 1000, "output_tokens": 100, "seconds": 4.0},
+         "input_tokens": 1000, "output_tokens": 100, "seconds": 4.0,
+         "needs_review": True},
         {"alert_id": "A3", "note": None, "violations": [], "claims": 0,
-         "input_tokens": 1000, "output_tokens": 0, "seconds": 1.0},
+         "input_tokens": 1000, "output_tokens": 0, "seconds": 1.0,
+         "needs_review": True},
     ]  # fmt: skip
     truth = pd.DataFrame({"alert_id": ["A1", "A2", "A3"], "is_laundering": [1, 1, 0],
                           "pattern_type": ["CYCLE", "FAN_OUT", None]})  # fmt: skip
     report = evaluate_notes(records, truth, "v2")
     assert report["json_valid"] == 2
-    assert (
-        report["decision"]["precision"] == 1.0 and report["decision"]["recall"] == 0.5
-    )
+    assert report["notes_needing_review"] == 2
     assert report["typology"]["accuracy"] == 0.5
     assert report["notes_with_invented_facts"] == 1
     assert report["mean_seconds_per_note"] == round(7 / 3, 2)

@@ -17,20 +17,6 @@ def _ratio(top: float, bottom: float) -> float:
     return round(top / bottom, 4) if bottom else 0.0
 
 
-def decision_scores(valid: pd.DataFrame) -> Dict:
-    """Precision and recall of 'escalate' against is_laundering."""
-    escalated = valid["decision"] == "escalate"
-    real = valid["is_laundering"] == 1
-    hits = int((escalated & real).sum())
-    return {
-        "escalated": int(escalated.sum()),
-        "laundering_alerts": int(real.sum()),
-        "true_escalations": hits,
-        "precision": _ratio(hits, escalated.sum()),
-        "recall": _ratio(hits, real.sum()),
-    }
-
-
 def typology_scores(valid: pd.DataFrame) -> Dict:
     """Typology accuracy on alerts whose IBM pattern type is known."""
     mapped = valid[valid["pattern_type"].notna()]
@@ -43,8 +29,7 @@ def evaluate_notes(records: List[Dict], truth: pd.DataFrame, version: str) -> Di
     """Validity, decisions, typology, invented facts, cost and latency."""
     frame = pd.DataFrame(records).merge(truth, on="alert_id", how="left")
     valid = frame[frame["note"].notna()].copy()
-    for column in ("decision", "typology"):
-        valid[column] = valid["note"].map(lambda note: note[column])
+    valid["typology"] = valid["note"].map(lambda note: note["typology"])
     claims = int(valid["claims"].sum())
     invented = int(valid["violations"].map(len).sum())
     cost = (
@@ -57,7 +42,7 @@ def evaluate_notes(records: List[Dict], truth: pd.DataFrame, version: str) -> Di
         "alerts": len(frame),
         "json_valid": len(valid),
         "json_valid_rate": _ratio(len(valid), len(frame)),
-        "decision": decision_scores(valid),
+        "notes_needing_review": int(frame["needs_review"].sum()),
         "typology": typology_scores(valid),
         "notes_with_invented_facts": int((valid["violations"].map(len) > 0).sum()),
         "invented_fact_rate_per_note": _ratio(

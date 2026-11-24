@@ -30,10 +30,10 @@ def make_client() -> Any:
     return OpenAI()
 
 
-def cache_key(user_message: str, version: str) -> str:
+def cache_key(user_message: str, version: str, retry: int = 0) -> str:
     """Hash of everything that decides the answer."""
     parts = [config.LLM_MODEL, version, str(config.LLM_TEMPERATURE),
-             load_prompt(version), user_message]  # fmt: skip
+             load_prompt(version), user_message, "retry%d" % retry]  # fmt: skip
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 
@@ -58,9 +58,9 @@ def call_model(client: Any, user_message: str, version: str) -> Dict:
     }
 
 
-def request_note(client: Any, user_message: str, version: str) -> Dict:
+def request_note(client: Any, user_message: str, version: str, retry: int = 0) -> Dict:
     """Cached answer, or a fresh call (retried a few times) that is then cached."""
-    path = config.LLM_CACHE_DIR / (cache_key(user_message, version) + ".json")
+    path = config.LLM_CACHE_DIR / (cache_key(user_message, version, retry) + ".json")
     if path.exists():
         return {**json.loads(path.read_text()), "from_cache": True}
     for attempt in range(config.LLM_MAX_ATTEMPTS):

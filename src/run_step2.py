@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 import pandas as pd
 
@@ -22,21 +22,40 @@ from src.fact_check import check_note, count_claims, total_cited
 from src.llm_client import make_client, request_note
 
 
-def note_for_alert(client, alert: Dict, evidence: Dict, version: str) -> Dict:
-    """One alert -> note (or None if the JSON was bad), violations and usage."""
-    result = request_note(client, build_user_message(alert, evidence), version)
+def parse_note(content: str, evidence: Dict) -> Optional[Dict]:
+    """The note as a dict if the JSON has every field, else None."""
     try:
-        note = json.loads(result["content"])
-        violations, claims = check_note(note, evidence), count_claims(note)
+        note = json.loads(content)
+        note["investigator_questions"], note["cited_txn_ids"]  # fields must exist
+        check_note(note, evidence)
+    except (ValueError, KeyError, TypeError):
+        return None
+    return note
+
+
+def note_for_alert(client, alert: Dict, evidence: Dict, version: str) -> Dict:
+    """One alert -> note, violations, review flag, usage (one retry on bad JSON)."""
+    message = build_user_message(alert, evidence)
+    result = request_note(client, message, version)
+    note = parse_note(result["content"], evidence)
+    if note is None:
+        retried = request_note(client, message, version, retry=1)
+        retried["seconds"] += result["seconds"]
+        retried["input_tokens"] += result["input_tokens"]
+        retried["output_tokens"] += result["output_tokens"]
+        result, note = retried, parse_note(retried["content"], evidence)
+    violations = check_note(note, evidence) if note else []
+    if note:
         by_id = {t["transaction_id"]: t for t in evidence_transactions(evidence)}
         note["total_amount"] = round(total_cited(note, by_id), 2)  # computed in code
-    except (ValueError, KeyError, TypeError):
-        note, violations, claims = None, [], 0
     return {
         "alert_id": alert["alert_id"],
+        "priority_rank": int(alert["rank"]),  # priority = detector score order
+        "score": float(alert["score"]),
         "note": note,
+        "needs_review": bool(violations) or note is None,
         "violations": violations,
-        "claims": claims,
+        "claims": count_claims(note) if note else 0,
         "input_tokens": result["input_tokens"],
         "output_tokens": result["output_tokens"],
         "seconds": result["seconds"],

@@ -26,24 +26,21 @@ The two are the same within noise, so "following the money" did not help here, a
 
 ## Step 2 result: prompt-only LLM case notes
 
-Model `gpt-4.1-mini`, temperature 0, JSON-schema output, input = score + plain-English SHAP reasons + evidence (no label, no pattern). Totals are computed in code from the cited ids; every cited id, account and text amount is checked against that alert's evidence.
+Model `gpt-4.1-mini`, temperature 0, JSON-schema output. Input = score + plain-English SHAP reasons + evidence (no label, no pattern). Totals are computed in code from the cited ids. Every cited id, account and text amount (also those written in red flags and questions) is checked against that alert's evidence; a note with any violation, or still invalid after one retry, is flagged `needs_review`. The LLM no longer decides: it gives a typology, red flags and 3 investigator questions, and alert priority is the detector score (`priority_rank`).
 
-Prompt choice on a dev set (top 30 validation-period alerts, 21 laundering; the test period was not used to choose):
+**Finding (v1, when the LLM still decided).** On the 200 test alerts the LLM escalated 81; 22 were laundering: precision 0.27, recall 0.43. The alert list is 26% laundering (51 of 200), so LLM escalate precision 0.27 is about the base rate and it added nothing. That is why the decision was removed. (On 30 dev alerts, v1 precision was 0.90 and v2 0.82, which shows how misleading a small dev set can be.)
 
-| Prompt | JSON valid | Escalate precision | Recall | Typology acc. (21) | Notes with invented facts | Cost |
-| --- | --- | --- | --- | --- | --- | --- |
-| v1 | 29/30 | 0.90 | 0.43 | 0.10 | 0 | $0.10 |
-| v2 (AMLSim definitions) | 29/30 | 0.82 | 0.43 | 0.10 | 1 | $0.10 |
+Prompt v3 (v2's typology definitions, no decision, questions) was checked on the dev set first (30 top validation alerts): 30/30 valid, 0 notes with invented facts, typology 3/22 mapped. Then run once on the test set (`artifacts/eval_step2.json`):
 
-v1 kept: v2's typology definitions did not help. Test run of v1 on all 200 alerts (`artifacts/eval_step2.json`):
+| | v1 (200 test, 1,200-token cap, LLM decides) | v3 (200 test, 3,000-token cap, one retry) |
+| --- | --- | --- |
+| JSON valid | 190/200 | **200/200** |
+| Typology accuracy (mapped alerts) | 13/49 = 0.27 | 13/51 = 0.25 |
+| Notes with invented facts / needing review | 12/190 = 6.3% | 17/200 = 8.5% |
+| Invented facts per checked claim | 0.75% | 0.27% |
+| Cost | $0.67 | $0.72 (about 6.5 s per note) |
 
-- JSON valid 190/200 (the 10 failures hit the 1,200-token output limit on long notes; they count as failures, not retried).
-- Escalate: 81 escalated, 22 truly laundering: precision 0.27, recall 0.43 (51 laundering alerts). Alert base rate is 0.26, so escalation precision is no better than the alert list itself.
-- Typology accuracy 13/49 = 0.27 (valid notes among the 51 mapped alerts).
-- Invented facts: 12/190 notes (6.3%) cite an id, account or amount not in the evidence; 0.75% of checked claims.
-- Cost $0.67 for 200 notes, about 5.2 s per note.
-
-The notes are readable and cited, but the LLM is a weak judge of these alerts: it does not separate real from false alerts and rarely names the IBM pattern. Totals computed by the model itself were wrong in all 10 probe notes, which is why code now computes them.
+Typology accuracy is poor: about one in four, so the typology is a hint for the analyst, not a result. The fact check is what makes the notes usable: 183 of 200 notes had every cited id, account and amount in the evidence, and the other 17 are flagged for review. Prompts v1 and v2 are kept for the record but target the old schema (with a decision).
 
 ## Run
 

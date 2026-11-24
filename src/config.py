@@ -90,17 +90,24 @@ MODEL_FILE = "lightgbm_li_small.txt"
 # Step 2: LLM case notes (OpenAI). Key: OPENAI_API_KEY in .env (git-ignored).
 LLM_MODEL = "gpt-4.1-mini"  # cheap, supports temperature 0 and JSON-schema outputs
 LLM_TEMPERATURE = 0.0  # same input -> (nearly) same note, so runs can be compared
-LLM_MAX_OUTPUT_TOKENS = 1200  # a note is short; this stops runaway output
+LLM_MAX_OUTPUT_TOKENS = (
+    3000  # 1200 cut off 10 of 200 long notes (README); this stops runaways
+)
 LLM_MAX_ATTEMPTS = 3  # retries on a rate limit or network error
 LLM_RETRY_SECONDS = 5  # wait between retries
 # Dollars per million tokens for LLM_MODEL (OpenAI price list); update with the model.
 LLM_PRICE_INPUT_PER_MILLION = 0.40
 LLM_PRICE_OUTPUT_PER_MILLION = 1.60
-PROMPT_VERSIONS = ("v1", "v2")  # prompts live in src/prompts/case_note_<version>.txt
+PROMPT_VERSIONS = (
+    "v1",
+    "v2",
+    "v3",
+)  # prompts live in src/prompts/case_note_<version>.txt
 DEV_ALERTS = 30  # top validation-period alerts used to choose between prompts
 DEV_FOLDER = "dev"  # artifacts/dev/: alerts, evidence and ground truth for the dev set
 PROMPTS_DIR = PROJECT_ROOT / "src" / "prompts"
 LLM_CACHE_DIR = CACHE_DIR / "llm"  # one file per request, never committed
+QUESTIONS_PER_NOTE = 3  # investigator questions the note must give
 AMOUNT_TOLERANCE = 0.01  # a cited total may differ from the sum by a cent of rounding
 NOTES_FILE = "case_notes_step2.json"  # notes plus their fact checks
 EVAL_STEP2_FILE = "eval_step2.json"
