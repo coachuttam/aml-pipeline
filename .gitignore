@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+# No data, models or secrets in git (AGENTS.md rule 4).
+cache/
+artifacts/*
+!artifacts/.gitkeep
+*.csv
+*.parquet
+*.npy
+.env
+kaggle.json
