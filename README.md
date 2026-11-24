@@ -67,9 +67,12 @@ source .venv/bin/activate && pip install -r requirements.txt
 streamlit run app.py        # reads artifacts/ only; no API key needed
 ```
 
-Pages: alert queue (filter, sort), alert detail (reasons, evidence with cited rows highlighted, network graph, case note, fact-check status), decision (escalate or close with a comment, saved to `artifacts/audit_log.jsonl`, git-ignored) and metrics with caveats. The optional "Regenerate note" button is the only live OpenAI call. A 5-minute script is in `docs/DEMO.md`.
+Pages: alert queue (filter, sort), alert detail (reasons, evidence with cited rows highlighted, network graph, case note, fact-check status), a decision form at the bottom of the detail page (escalate or close with a comment, saved to `artifacts/audit_log.jsonl`, git-ignored; the Audit log page lists it) and metrics with caveats. The optional "Regenerate note" button is the only live OpenAI call. A 5-minute script is in `docs/DEMO.md`.
 
 ## Limits
+
+- ACH is a known shortcut in IBM's synthetic data: the payment format is often the strongest SHAP reason, so do not read a high score as real-world suspicion.
+- Case-note totals are per currency (never summed across currencies).
 
 - Step 2 needs `OPENAI_API_KEY` in `.env`; `python -m src.run_dev` then `python -m src.run_step2 --set dev|test --prompt v1|v2`.
 
