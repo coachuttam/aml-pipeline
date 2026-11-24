@@ -35,7 +35,12 @@ def folder(tmp_path: Path) -> Path:
     alerts.to_parquet(tmp_path / config.ALERTS_FILE)
     (tmp_path / config.EVIDENCE_FOLDER).mkdir()
     (tmp_path / config.EVIDENCE_FOLDER / "A0001.json").write_text(json.dumps(EVIDENCE))
-    note = {"typology": "FAN_OUT", "cited_txn_ids": [1, 2]}
+    note = {
+        "typology": "FAN_OUT",
+        "cited_txn_ids": [1, 2],
+        "red_flags": [],
+        "investigator_questions": [],
+    }
     record = {
         "alert_id": "A0001",
         "note": note,

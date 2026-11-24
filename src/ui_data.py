@@ -83,7 +83,7 @@ def evidence_table(evidence: Dict) -> pd.DataFrame:
 
 
 def cited_ids(record: Dict) -> List[int]:
-    """Transaction ids the note cites: its list plus ids written in flags and questions."""
+    """Ids the note cites: its list plus ids written in flags and questions."""
     note = record.get("note") if record else None
     if not note:
         return []
