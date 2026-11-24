@@ -11,6 +11,7 @@ import streamlit as st
 
 from src import config
 from src.audit_log import latest_decision_by_alert, read_decisions, record_decision
+from src.totals import format_totals
 from src.ui_components import (
     OK_COLOUR,
     REVIEW_COLOUR,
@@ -20,12 +21,19 @@ from src.ui_components import (
     kpi_card,
     show_table,
 )
-from src.ui_data import cited_ids, load_bundle, load_json_if_present, load_queue
-from src.ui_graph import draw_graph, graph_edges
+from src.ui_data import (
+    cited_ids,
+    load_bundle,
+    load_json_if_present,
+    load_queue,
+    review_label,
+)
+from src.ui_graph import build_figure, graph_edges
 
 FOLDER = config.ARTIFACTS_DIR
-PAGES = ["Alert queue", "Alert detail", "Decision", "Metrics"]
-SORT_CHOICES = ["priority_rank", "score", "typology_hint", "needs_review"]
+PAGES = ["Alert queue", "Alert detail", "Audit log", "Metrics"]
+SORT_CHOICES = ["priority_rank", "score", "typology_hint", "review"]
+SCORE_COLUMN = {"score": st.column_config.NumberColumn("score", format="%.3f")}
 
 st.set_page_config(page_title="Explainable AML pipeline", layout="wide")
 
@@ -62,13 +70,14 @@ def page_queue(queue: pd.DataFrame) -> None:
     sort = st.selectbox("Sort by", SORT_CHOICES)
     view = queue.copy()
     if flag != "all":
-        view = view[view["needs_review"] == (flag == "needs review only")]
+        wanted = review_label(flag == "needs review only")
+        view = view[view["review"] == wanted]
     if hints:
         view = view[view["typology_hint"].isin(hints)]
     view = view.sort_values(sort, ascending=sort != "score")
     view["decision"] = view["alert_id"].map(latest_decision_by_alert()).fillna("")
     st.caption("%d of %d alerts" % (len(view), len(queue)))
-    show_table(view)
+    show_table(view, column_config=SCORE_COLUMN)
 
 
 def show_status(record: dict) -> None:
@@ -76,12 +85,12 @@ def show_status(record: dict) -> None:
     if record is None or record["note"] is None:
         st.warning("No valid note for this alert.")
     elif record["needs_review"]:
-        st.markdown(badge("needs review", REVIEW_COLOUR), unsafe_allow_html=True)
+        st.markdown(badge(review_label(True), REVIEW_COLOUR), unsafe_allow_html=True)
         for item in record["violations"]:
             st.write("• " + item)
         st.caption("Fact check failed: the items above are not in the evidence.")
     else:
-        st.markdown(badge("fact check passed", OK_COLOUR), unsafe_allow_html=True)
+        st.markdown(badge(review_label(False), OK_COLOUR), unsafe_allow_html=True)
         st.caption("Every cited id, account and amount is in this alert's evidence.")
 
 
@@ -100,8 +109,8 @@ def show_note(bundle: dict) -> None:
     for question in note["investigator_questions"]:
         st.write("• " + question)
     st.caption(
-        "Cited: %d transactions, total %.2f (computed in code)"
-        % (len(note["cited_txn_ids"]), note["total_amount"])
+        "Cited: %d transactions, total %s (computed in code, per currency)"
+        % (len(note["cited_txn_ids"]), format_totals(note["totals_by_currency"]))
     )
 
 
@@ -128,7 +137,10 @@ def page_detail(alert_id: str) -> None:
     bundle = get_bundle(alert_id)
     alert = bundle["alert"]
     st.header("%s  ·  score %.3f" % (alert_id, alert["score"]))
-    st.caption("Priority rank %d" % alert["rank"])
+    st.caption(
+        "Priority rank %d  ·  %s of all test transactions by score"
+        % (alert["rank"], bundle["score_rank"])
+    )
     left, right = st.columns([3, 2])
     with left:
         st.subheader("Why the detector flagged it")
@@ -147,24 +159,36 @@ def page_detail(alert_id: str) -> None:
         show_note(bundle)
         regenerate_button(alert_id, bundle)
         st.subheader("Network")
-        st.pyplot(draw_graph(graph_edges(bundle["evidence"])))
-        st.caption("Accounts are nodes, transactions are edges; the alert is red.")
+        edges = graph_edges(bundle["evidence"], cited_ids(bundle["record"]))
+        st.plotly_chart(build_figure(edges), use_container_width=True)
+        st.caption(
+            "Accounts are nodes, transactions are edges. Red: the alert; "
+            "orange: cited by the note. Hover an edge for amount, currency, time."
+        )
+    decision_form(alert_id, bundle)
 
 
-def page_decision(alert_id: str) -> None:
-    st.header("Decision for %s" % alert_id)
-    show_status(get_bundle(alert_id)["record"])
-    decision = st.radio("Decision", list(config.DECISIONS), horizontal=True)
-    comment = st.text_area("Comment (why)")
-    if st.button("Save decision"):
+def decision_form(alert_id: str, bundle: dict) -> None:
+    """Escalate or close, with a comment, saved to the audit log."""
+    st.divider()
+    st.subheader("Your decision")
+    show_status(bundle["record"])
+    decision = st.radio(
+        "Decision", list(config.DECISIONS), horizontal=True, key="d" + alert_id
+    )
+    comment = st.text_area("Comment (why)", key="c" + alert_id)
+    if st.button("Save decision", key="s" + alert_id):
         record_decision(alert_id, decision, comment, config.UI_NOTE_VERSION)
         st.success("Saved %s for %s." % (decision, alert_id))
-    st.subheader("Audit log")
+
+
+def page_audit_log() -> None:
+    st.header("Audit log")
     log = read_decisions()
     if log:
         show_table(pd.DataFrame(log[::-1]))
     else:
-        st.caption("No decisions yet.")
+        st.caption("No decisions yet. Decide on the Alert detail page.")
 
 
 def number_cards(items: list) -> None:
@@ -219,6 +243,9 @@ def page_metrics() -> None:
         "- All data is IBM's **synthetic** LI-Small set; nothing here says how a real "
         "bank would fare.\n"
         "- The detector is weak; this pipeline is about explanation, not detection.\n"
+        "- **ACH is a known shortcut in the IBM synthetic data**: the payment format "
+        "is often the strongest reason, so a high score may reflect how the data was "
+        "generated, not real-world suspicion.\n"
         "- The typology is a **hint**: about one in four is right, and the LLM never "
         'said "unclear" on a false alarm.\n'
         "- An earlier version let the LLM decide: escalate precision 0.27, the same as "
@@ -232,13 +259,13 @@ def main() -> None:
     st.sidebar.title("Explainable AML pipeline")
     page = st.sidebar.radio("Page", PAGES)
     queue = get_queue()
-    alert_id = selected_alert(queue) if page in PAGES[1:3] else ""
+    alert_id = selected_alert(queue) if page == "Alert detail" else ""
     if page == "Alert queue":
         page_queue(queue)
     elif page == "Alert detail":
         page_detail(alert_id)
-    elif page == "Decision":
-        page_decision(alert_id)
+    elif page == "Audit log":
+        page_audit_log()
     else:
         page_metrics()
     st.sidebar.caption(SYNTHETIC_NOTE)

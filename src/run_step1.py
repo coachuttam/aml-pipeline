@@ -153,6 +153,8 @@ def run(output_dir: Path, raw_csv: Path, rebuild: bool = False) -> Dict[str, Any
         coverage,
         time.time() - start,
     )
+    test_window = dataset.split.test
+    summary["test_transactions"] = int(test_window.stop - test_window.start)
     (output_dir / config.SUMMARY_FILE).write_text(json.dumps(summary, indent=2) + "\n")
     return summary
 

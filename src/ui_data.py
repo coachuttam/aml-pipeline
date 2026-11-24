@@ -17,7 +17,7 @@ import pandas as pd
 from src import config
 from src.case_note_input import evidence_transactions
 from src.fact_check import CITED_IDS_IN_TEXT
-from src.reasons import plain_reasons
+from src.reasons import display_reasons
 
 
 def load_notes(folder: Path) -> Dict[str, Dict]:
@@ -26,10 +26,39 @@ def load_notes(folder: Path) -> Dict[str, Dict]:
     return {record["alert_id"]: record for record in records}
 
 
+def test_period_size(folder: Path) -> int:
+    """Number of test-period transactions (0 if the summary lacks it)."""
+    summary = load_json_if_present(folder / config.SUMMARY_FILE)
+    return int(summary.get("test_transactions", 0))
+
+
+def top_percent_text(rank: int, test_size: int) -> str:
+    """ "top 0.0017%": the alert's rank among every test-period score."""
+    if not test_size:
+        return ""
+    return "top %.4f%%" % (100.0 * rank / test_size)
+
+
+def review_label(needs_review: bool) -> str:
+    """Read-only flag text for tables and badges."""
+    return "⚠ needs review" if needs_review else "✓ clean"
+
+
+def reason_line(reason: Dict) -> str:
+    """ "The payment format is ACH — strong, 38% of the top-5 push"."""
+    return "%s — %s, %d%% of the top-5 push (%s the score)" % (
+        reason["text"],
+        reason["strength"],
+        reason["share_percent"],
+        reason["direction"],
+    )
+
+
 def load_queue(folder: Path) -> pd.DataFrame:
     """The alert queue: priority, score, top reason, typology hint, review flag."""
     alerts = pd.read_parquet(folder / config.ALERTS_FILE)
     notes = load_notes(folder)
+    size = test_period_size(folder)
     rows = []
     for alert in alerts.to_dict("records"):
         record = notes.get(alert["alert_id"], {})
@@ -39,9 +68,10 @@ def load_queue(folder: Path) -> pd.DataFrame:
                 "alert_id": alert["alert_id"],
                 "priority_rank": int(alert["rank"]),
                 "score": float(alert["score"]),
-                "top_reason": plain_reasons(alert)[0],
+                "score_rank": top_percent_text(int(alert["rank"]), size),
+                "top_reason": reason_line(display_reasons(alert)[0]),
                 "typology_hint": note["typology"] if note else "no note",
-                "needs_review": bool(record.get("needs_review", True)),
+                "review": review_label(bool(record.get("needs_review", True))),
             }
         )
     return pd.DataFrame(rows)
@@ -56,7 +86,8 @@ def load_bundle(folder: Path, alert_id: str) -> Dict[str, Any]:
     )
     return {
         "alert": alert,
-        "reasons": plain_reasons(alert),
+        "reasons": [reason_line(r) for r in display_reasons(alert)],
+        "score_rank": top_percent_text(int(alert["rank"]), test_period_size(folder)),
         "evidence": evidence,
         "table": evidence_table(evidence),
         "record": load_notes(folder).get(alert_id),

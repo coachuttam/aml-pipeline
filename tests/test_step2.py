@@ -9,9 +9,10 @@ import pandas as pd
 from src import config
 from src.case_note_input import build_user_message, load_prompt, response_format
 from src.evaluate_step2 import evaluate_notes
-from src.fact_check import check_note, total_cited
+from src.fact_check import check_note
 from src.llm_client import cache_key, request_note
 from src.reasons import plain_reasons
+from src.totals import currency_code, format_totals, totals_by_currency
 
 TRANSACTION = {
     "transaction_id": 1, "from_account": "A", "to_account": "B",
@@ -40,7 +41,6 @@ def good_note(**changes):
         "typology": "CYCLE",
         "key_accounts": ["A"],
         "cited_txn_ids": [1, 2],
-        "total_amount": 150.5,
         "red_flags": ["A paid 100.00 (txn 1)"],
         "investigator_questions": ["Why did A pay B (txn 1)?"],
         "reason": "ok",
@@ -86,9 +86,22 @@ def test_fact_check_flags_an_unknown_account():
     assert check_note(good_note(key_accounts=["ZZZ"]), EVIDENCE)
 
 
-def test_total_is_computed_from_cited_transactions():
-    by_id = {t["transaction_id"]: t for t in [TRANSACTION, OTHER]}
-    assert total_cited(good_note(), by_id) == 150.5
+def test_total_is_computed_per_currency_never_across_currencies():
+    euro = {**OTHER, "payment_currency": "Euro"}
+    by_id = {1: TRANSACTION, 2: euro, 3: {**TRANSACTION, "transaction_id": 3}}
+    totals = totals_by_currency([1, 2, 3, 99], by_id)
+    assert totals == {"USD": 200.0, "EUR": 50.5}
+
+
+def test_totals_read_as_usd_x_dot_eur_y():
+    assert format_totals({"USD": 1200.0, "EUR": 50.5}) == "USD 1,200.00 · EUR 50.50"
+    assert format_totals({}) == "none"
+    assert currency_code("Bitcoin") == "BTC" and currency_code("Zorkmid") == "Zorkmid"
+
+
+def test_a_text_amount_equal_to_a_currency_total_is_not_flagged():
+    note = good_note(red_flags=["Together they moved 150.50 (txn 1, 2)"])
+    assert check_note(note, EVIDENCE) == []
 
 
 def test_schema_has_no_total_for_the_model_to_get_wrong():

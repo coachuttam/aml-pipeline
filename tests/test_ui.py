@@ -10,8 +10,9 @@ import pytest
 
 from src import config
 from src.audit_log import latest_decision_by_alert, read_decisions, record_decision
+from src.reasons import display_reasons
 from src.ui_data import cited_ids, load_bundle, load_queue
-from src.ui_graph import graph_edges
+from src.ui_graph import build_figure, graph_edges
 
 TXN = {
     "transaction_id": 1, "hop": 0, "time": "2022-09-09 00:03", "from_account": "A",
@@ -48,19 +49,23 @@ def folder(tmp_path: Path) -> Path:
         "violations": [],
     }
     (tmp_path / config.UI_NOTES_FILE).write_text(json.dumps([record]))
+    (tmp_path / config.SUMMARY_FILE).write_text(
+        json.dumps({"test_transactions": 10000})
+    )
     return tmp_path
 
 
 def test_queue_has_priority_score_top_reason_typology_and_review_flag(folder):
     row = load_queue(folder).iloc[0]
     assert row["priority_rank"] == 1 and row["typology_hint"] == "FAN_OUT"
-    assert "7 days" in row["top_reason"] and row["needs_review"] == False  # noqa: E712
+    assert "7 days" in row["top_reason"] and "strong" in row["top_reason"]
+    assert row["review"] == "✓ clean" and row["score_rank"] == "top 0.0100%"
 
 
 def test_a_missing_note_shows_as_needing_review(folder):
     (folder / config.UI_NOTES_FILE).write_text("[]")
     row = load_queue(folder).iloc[0]
-    assert row["typology_hint"] == "no note" and row["needs_review"]
+    assert row["typology_hint"] == "no note" and row["review"].startswith("⚠")
 
 
 def test_bundle_has_reasons_evidence_table_and_cited_ids(folder):
@@ -76,10 +81,41 @@ def test_bundle_and_queue_carry_no_label_column(folder):
     ]
 
 
-def test_graph_marks_only_the_alert_transaction(folder):
-    edges = graph_edges(EVIDENCE)
-    assert [e[3] for e in edges] == [True, False]
-    assert edges[1][:2] == ("B", "C")
+def test_graph_marks_the_alert_and_the_cited_transactions():
+    edges = graph_edges(EVIDENCE, cited=[2])
+    assert [e.is_alert for e in edges] == [True, False]
+    assert [e.is_cited for e in edges] == [False, True]
+    assert (edges[1].sender, edges[1].receiver) == ("B", "C")
+
+
+def test_hover_shows_amount_currency_and_time():
+    text = graph_edges(EVIDENCE, [])[0].hover
+    assert "10.00 USD" in text and "2022-09-09 00:03" in text
+
+
+def test_interactive_figure_draws_the_alert_edge_red_and_labels_accounts():
+    figure = build_figure(graph_edges(EVIDENCE, [2]))
+    colours = [t.line.color for t in figure.data if t.mode == "lines+markers"]
+    assert config.ALERT_EDGE_COLOUR in colours and config.CITED_EDGE_COLOUR in colours
+    assert set(figure.data[-1].text) == {"A", "B", "C"}
+
+
+def test_reasons_get_a_strength_label_and_a_share_of_the_top_five():
+    reasons = [
+        {"feature": "sender_sent_7d", "value": 5.0, "shap": 6.0},
+        {"feature": "sender_sent_1h", "value": 1.0, "shap": 3.0},
+        {"feature": "sender_sent_24h", "value": 2.0, "shap": -1.0},
+    ]
+    alert = {"reasons_json": json.dumps(reasons), "payment_format": "ACH",
+             "payment_currency": "US Dollar"}  # fmt: skip
+    shown = display_reasons(alert)
+    assert [r["strength"] for r in shown] == ["strong", "strong", "weak"]
+    assert [r["share_percent"] for r in shown] == [60, 30, 10]
+    assert shown[2]["direction"] == "lowers"
+
+
+def test_the_score_phrase_is_gone_from_displayed_reasons(folder):
+    assert "raises the score by" not in load_bundle(folder, "A0001")["reasons"][0]
 
 
 def test_decisions_are_appended_in_order_with_note_version(tmp_path):

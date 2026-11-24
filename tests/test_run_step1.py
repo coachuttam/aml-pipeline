@@ -29,6 +29,7 @@ def test_step_one_writes_alerts_evidence_ground_truth_and_a_summary(finished) ->
     assert (output / "ground_truth.parquet").exists()
     assert (output / "step1_summary.json").exists()
     assert summary["alerts"] == 25
+    assert summary["test_transactions"] > 0
 
 
 def test_there_is_one_evidence_file_per_alert(finished) -> None:

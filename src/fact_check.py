@@ -14,6 +14,7 @@ from typing import Dict, List, Set
 
 from src import config
 from src.case_note_input import evidence_transactions
+from src.totals import totals_by_currency
 
 CITED_IDS_IN_TEXT = re.compile(r"txns?\s+((?:\d+(?:,\s*|\s+and\s+|\s*))+)")
 MONEY_IN_TEXT = re.compile(r"\d[\d,]*\.\d{2}\b")  # "10,917.92": a decimal amount
@@ -29,11 +30,6 @@ def _evidence_amounts(transactions: List[Dict]) -> Set[float]:
 
 def _near(value: float, options: Set[float]) -> bool:
     return any(abs(value - option) <= config.AMOUNT_TOLERANCE for option in options)
-
-
-def total_cited(note: Dict, by_id: Dict[int, Dict]) -> float:
-    """Sum of amount_paid over the cited transactions that exist (computed in code)."""
-    return sum(by_id[t]["amount_paid"] for t in note["cited_txn_ids"] if t in by_id)
 
 
 def _check_ids(note: Dict, by_id: Dict[int, Dict]) -> List[str]:
@@ -65,7 +61,9 @@ def _check_text_ids(note: Dict, by_id: Dict[int, Dict]) -> List[str]:
 def _check_text_amounts(
     note: Dict, transactions: List[Dict], by_id: Dict[int, Dict]
 ) -> List[str]:
-    allowed = _evidence_amounts(transactions) | {round(total_cited(note, by_id), 2)}
+    allowed = _evidence_amounts(transactions) | {
+        round(v, 2) for v in totals_by_currency(note["cited_txn_ids"], by_id).values()
+    }
     text = " ".join(
         note["red_flags"] + note["investigator_questions"] + [note["reason"]]
     )

@@ -18,8 +18,9 @@ import pandas as pd
 from src import config
 from src.case_note_input import build_user_message, evidence_transactions
 from src.evaluate_step2 import evaluate_notes
-from src.fact_check import check_note, count_claims, total_cited
+from src.fact_check import check_note, count_claims
 from src.llm_client import make_client, request_note
+from src.totals import totals_by_currency
 
 
 def parse_note(content: str, evidence: Dict) -> Optional[Dict]:
@@ -47,7 +48,7 @@ def note_for_alert(client, alert: Dict, evidence: Dict, version: str) -> Dict:
     violations = check_note(note, evidence) if note else []
     if note:
         by_id = {t["transaction_id"]: t for t in evidence_transactions(evidence)}
-        note["total_amount"] = round(total_cited(note, by_id), 2)  # computed in code
+        note["totals_by_currency"] = totals_by_currency(note["cited_txn_ids"], by_id)
     return {
         "alert_id": alert["alert_id"],
         "priority_rank": int(alert["rank"]),  # priority = detector score order

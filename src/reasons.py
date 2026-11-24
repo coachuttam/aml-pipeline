@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 from typing import Dict, List
 
+from src import config
+
 # Code features are shown as the alert's own text value, not the meaningless code.
 TEMPLATES: Dict[str, str] = {
     "amount_vs_receiver_mean": (
@@ -60,8 +62,8 @@ TEMPLATES: Dict[str, str] = {
 }
 
 
-def plain_reason(feature: str, value: float, push: float, alert: Dict) -> str:
-    """One sentence for one reason; the push is how far it raised the model score."""
+def reason_text(feature: str, value: float, alert: Dict) -> str:
+    """The reason as plain words, without the size of its push."""
     if feature == "payment_format_code":
         text = "The payment format is %s" % alert["payment_format"]
     elif feature == "payment_currency_code":
@@ -74,8 +76,42 @@ def plain_reason(feature: str, value: float, push: float, alert: Dict) -> str:
         )
     else:
         text = "%s is %s" % (feature.replace("_", " "), value)
+    return text
+
+
+def plain_reason(feature: str, value: float, push: float, alert: Dict) -> str:
+    """One sentence for one reason; the push is how far it raised the model score.
+
+    This exact text is the LLM's input (changing it would change every cache key).
+    """
     direction = "raises" if push >= 0 else "lowers"
+    text = reason_text(feature, value, alert)
     return "%s (%s the score by %.1f)." % (text, direction, abs(push))
+
+
+def strength_label(share: float) -> str:
+    """ "strong", "moderate" or "weak" from a reason's share of the top-5 push."""
+    if share >= config.STRONG_REASON_SHARE:
+        return "strong"
+    return "moderate" if share >= config.MODERATE_REASON_SHARE else "weak"
+
+
+def display_reasons(alert: Dict) -> List[Dict]:
+    """For the UI: text, strength label, % share of the top-5 push, direction."""
+    reasons = json.loads(alert["reasons_json"])
+    total = sum(abs(r["shap"]) for r in reasons) or 1.0
+    shown = []
+    for r in reasons:
+        share = abs(r["shap"]) / total
+        shown.append(
+            {
+                "text": reason_text(r["feature"], r["value"], alert),
+                "strength": strength_label(share),
+                "share_percent": round(100 * share),
+                "direction": "raises" if r["shap"] >= 0 else "lowers",
+            }
+        )
+    return shown
 
 
 def plain_reasons(alert: Dict) -> List[str]:

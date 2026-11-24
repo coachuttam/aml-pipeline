@@ -130,4 +130,19 @@ AUDIT_LOG_FILE = "audit_log.jsonl"  # in artifacts/, so it stays out of git
 DECISIONS = ("escalate", "close")  # what the analyst can choose
 CITED_COLOUR = "#fff3b0"  # row highlight for transactions the note cites
 ALERT_EDGE_COLOUR = "#d62728"  # the alert transaction in the network graph
-GRAPH_FIGURE_SIZE = (6.0, 4.2)  # inches; small enough to sit beside the table
+GRAPH_HEIGHT_PIXELS = 460  # height of the interactive network next to the table
+CITED_EDGE_COLOUR = "#ff7f0e"  # transactions the note cites
+OTHER_EDGE_COLOUR = "#b0b0b0"  # other evidence transactions
+NODE_COLOUR = "#4c78a8"  # account dots
+
+# UI fixes: money, scores and reason strength.
+CURRENCY_CODES = {  # IBM currency names -> codes, so totals read "USD 10.00"
+    "US Dollar": "USD", "Euro": "EUR", "Yuan": "CNY", "Shekel": "ILS", "Rupee": "INR",
+    "Yen": "JPY", "UK Pound": "GBP", "Ruble": "RUB", "Canadian Dollar": "CAD",
+    "Australian Dollar": "AUD", "Swiss Franc": "CHF", "Brazil Real": "BRL",
+    "Mexican Peso": "MXN", "Saudi Riyal": "SAR", "Bitcoin": "BTC",
+}  # fmt: skip
+STRONG_REASON_SHARE = (
+    0.30  # a reason with at least this share of the top-5 push is "strong"
+)
+MODERATE_REASON_SHARE = 0.15  # at least this share is "moderate"; below it "weak"

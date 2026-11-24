@@ -47,7 +47,7 @@ def show_table(table: pd.DataFrame, **options) -> None:
 
 
 def highlight_cited(table: pd.DataFrame, cited: List[int]):
-    """A styled table with the rows the note cites highlighted."""
+    """A styled table: cited rows highlighted, amounts to 2 decimals."""
 
     def colour(row: pd.Series) -> List[str]:
         cited_row = row["transaction_id"] in cited
@@ -57,4 +57,4 @@ def highlight_cited(table: pd.DataFrame, cited: List[int]):
             else ""
         ] * len(row)
 
-    return table.style.apply(colour, axis=1)
+    return table.style.apply(colour, axis=1).format({"amount_paid": "{:,.2f}"})
