@@ -32,11 +32,21 @@ from src.teacher import (
 )
 
 
+def compact_json(text: str) -> str:
+    """The same JSON without indentation (Qwen needs a quarter fewer tokens)."""
+    return json.dumps(json.loads(text), separators=(",", ":"), ensure_ascii=False)
+
+
 def student_messages(alert: Dict, evidence: Dict) -> List[Dict]:
-    """System and user message of the student: no label, no pattern, no truth."""
+    """System and user message of the student: no label, no pattern, no truth.
+
+    The user message holds exactly the content V1 and the teacher get, only written
+    without indentation: with Qwen's one-token-per-digit numbers the indented form
+    is 8.8k tokens on average, over the 8,192 limit for 96% of the examples.
+    """
     return [
         {"role": "system", "content": load_prompt(config.STUDENT_PROMPT_VERSION)},
-        {"role": "user", "content": build_user_message(alert, evidence)},
+        {"role": "user", "content": compact_json(build_user_message(alert, evidence))},
     ]
 
 

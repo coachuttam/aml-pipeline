@@ -1,5 +1,6 @@
 target-version = "py39"
 line-length = 88
+extend-exclude = ["notebooks"]  # Colab cells: shell magics, one-line imports
 
 [lint]
 select = ["E", "F", "I"]

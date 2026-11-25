@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from src import config
+from src.case_note_input import build_user_message
 from src.finetune_alerts import build_candidates
 from src.finetune_dataset import (
     chat_example,
@@ -262,3 +263,9 @@ def test_candidates_hold_no_label_and_split_whole_patterns(
     laundering = truth[truth["is_laundering"] == 1]
     assert len(laundering) > 0
     assert (laundering.groupby("attempt_id")["split"].nunique() == 1).all()
+
+
+def test_student_input_is_the_teacher_input_content_written_compactly():
+    student = student_messages(ALERT, EVIDENCE)[1]["content"]
+    assert "\n" not in student and ", " not in student
+    assert json.loads(student) == json.loads(build_user_message(ALERT, EVIDENCE))

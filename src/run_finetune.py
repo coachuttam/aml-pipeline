@@ -4,6 +4,8 @@
     python -m src.run_finetune dev                # 50 LI-Small validation alerts
     python -m src.run_finetune generate --count 20   # teacher notes for a small batch
     python -m src.run_finetune generate              # ... for every candidate
+    python -m src.run_finetune rebalance          # train: all typed, unclear to 40%
+    python -m src.run_finetune inputs             # the 200 test alerts, inputs only
 
 Output goes to data/finetune/ (git-ignored): train.jsonl, validation.jsonl (chat
 format), meta.jsonl (truth per example, for analysis only), report.json, and
@@ -27,6 +29,7 @@ from src.finetune_dataset import (
     student_messages,
     token_count,
 )
+from src.finetune_rebalance import rebalance_files
 from src.finetune_report import build_report
 from src.finetune_select import pick_sample
 from src.llm_client import make_client
@@ -56,7 +59,7 @@ def write_dataset(folder: Path, candidates: Path, records: List[Dict]) -> Dict:
 
 
 def write_dev_inputs(dev_folder: Path, output: Path) -> int:
-    """The 50 dev alerts as system + user messages only (no note, no truth)."""
+    """The alerts of a folder as system + user messages only (no note, no truth)."""
     alerts = pd.read_parquet(dev_folder / config.ALERTS_FILE)
     lines = []
     for alert in alerts.to_dict("records"):
@@ -87,7 +90,9 @@ def generate(count: Optional[int]) -> Dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("step", choices=["candidates", "dev", "generate"])
+    parser.add_argument(
+        "step", choices=["candidates", "dev", "generate", "rebalance", "inputs"]
+    )
     parser.add_argument("--count", type=int, default=None)
     arguments = parser.parse_args()
     if arguments.step == "candidates":
@@ -99,6 +104,13 @@ def main() -> None:
         )  # fmt: skip
         count = write_dev_inputs(folder, config.FINETUNE_DIR / "dev_inputs.jsonl")
         print("dev inputs:", count)
+    elif arguments.step == "rebalance":
+        print(json.dumps(rebalance_files(config.FINETUNE_DIR), indent=1))
+    elif arguments.step == "inputs":
+        count = write_dev_inputs(
+            config.ARTIFACTS_DIR, config.FINETUNE_DIR / config.FINETUNE_TEST_INPUTS
+        )
+        print("test inputs:", count)
     else:
         print(json.dumps(generate(arguments.count), indent=1))
 

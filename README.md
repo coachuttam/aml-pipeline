@@ -42,6 +42,33 @@ Prompt v3 (v2's typology definitions, no decision, questions) was checked on the
 
 Typology accuracy is poor: about one in four, so the typology is a hint for the analyst, not a result. The fact check is what makes the notes usable: 183 of 200 notes had every cited id, account and amount in the evidence, and the other 17 are flagged for review. Prompts v1 and v2 are kept for the record but target the old schema (with a decision).
 
+## V2 step 1: fine-tuning data for the case-note model
+
+A teacher (`gpt-4.1-mini`, temperature 0) writes gold case notes for HI-Small alerts. It sees the student's exact input plus a `PRIVILEGED_TRUTH` block (typology and pattern transaction ids, or "not laundering"); the student never does (documented exception in AGENTS.md). Alerts are the top-scored HI-Small validation and test transactions from the same LightGBM; LI-Small test alerts are never used for training. A teacher note is kept only if it passes the fact check, uses the typology it was given and cites the pattern transactions.
+
+- **2,200 candidates, 2,159 kept** (41 dropped, 38 of them for a transaction id or amount not in the evidence). 1,154 are laundering (52% of the candidates were laundering at the cap of 8 alerts per pattern, below the 60% aimed for). Teacher cost $7.74.
+- **Train 1,248 / validation 219 / dev 50 (LI-Small validation period) / test 200 (the existing alerts)**. Train and validation share no pattern. Train was rebalanced: all 749 typed examples kept, "unclear" thinned to 40% (382 false alarms and 117 laundering with thin evidence, seeded, same proportions as before). Validation is unchanged (60% unclear).
+- **Student input** is the V1 input written without indentation (the same content): with Qwen's one-token-per-digit numbers the indented form needs 8.8k tokens on average and does not fit 8,192; compact it is 7.1k on average, 8,046 at most.
+- **`pattern_visible`** (at least 3 of the pattern's transactions in the evidence) is stored per example in `data/finetune/meta.jsonl`. Where it is false the teacher was told to answer "unclear".
+
+### Evaluation scheme (V1, prompt v3 and the student alike)
+
+`src/eval_v2.py`. Five measures, on the 200 test alerts (37 laundering alerts with a visible pattern, 147 false alarms):
+
+| | V1 | v3 |
+| --- | --- | --- |
+| Typology accuracy, visible-pattern laundering | 12/35 = 34% | 12/37 = 32% |
+| "Unclear" rate on false alarms | 0/139 | 0/147 |
+| "Unclear" rate on visible-pattern laundering | 0/35 | 0/37 |
+| Invented facts per claim | 53/7,033 = 0.75% | 20/7,403 = 0.27% |
+| JSON validity | 190/200 | 200/200 |
+
+Neither prompt ever answers "unclear", even on false alarms. That, and typology on visible patterns, is what the student is meant to improve. The student is not trained or scored yet.
+
+### Student training (not run)
+
+`notebooks/finetune_colab.ipynb`: QLoRA on `Qwen/Qwen2.5-7B-Instruct` (set in one config cell; the notebook prints the model card's licence, listed as Apache-2.0), 8,192 tokens, 2 epochs, validation loss each epoch, adapter saved to Drive. `src/student_generate.py` (run in Colab) writes the notes for the 50 dev alerts, then the 200 test alerts once; `python -m src.score_student --set dev|test --raw <file>` applies the same fact check and `eval_v2` on a CPU. Estimate, not measured: about 9-10 h on an L4 for training (7-11 h range) and about 1 h for the 250 notes, roughly 20 Colab compute units (15-25). Run with `MAX_STEPS = 3` first to measure the real speed. Memory at 8k tokens with a 152k vocabulary on 24 GB is untested.
+
 ## Run
 
 ```bash
@@ -79,3 +106,6 @@ Pages: alert queue (filter, sort), alert detail (reasons, evidence with cited ro
 - Synthetic data; the detector is weak (about 0.21 test F1), so many alerts are false positives.
 - Reason codes come from a model with a saturated score (many alerts score 1.0), so their ranking among the top alerts is coarse.
 - Evidence is cut to 50 transactions, so it finds only about half of a laundering pattern's transactions on average (0.49), whichever of the two strategies is used.
+- **BIPARTITE and STACK have no typed training examples.** Their patterns are large, so the 50-transaction evidence shows fewer than 3 of their transactions for 89 of 89 BIPARTITE and 145 of 150 STACK candidates; the teacher was told "unclear" and the student cannot learn these two typologies from this set. The test set has the same limit (evidence shows about half of a pattern on average).
+- "Unclear" is 40% of the rebalanced train split but 60% of validation, so validation loss is not comparable to the train mix.
+- Teacher notes are written with knowledge of the truth. A note can be right about the typology for reasons the student cannot see in the evidence, so student accuracy may stay below the teacher's.

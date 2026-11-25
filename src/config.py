@@ -178,3 +178,8 @@ TOKEN_ENCODING = "o200k_base"  # tokenizer of gpt-4.1-mini, for length statistic
 # V2 evaluation scheme (same for V1, prompt v3 and the fine-tuned student).
 PATTERN_VISIBLE_FILE = "pattern_visible.parquet"  # test alerts, evaluation only
 EVAL_V2_FILE_TEMPLATE = "eval_v2_%s.json"  # one report per notes file, in artifacts/
+
+# V2 training set: rebalance, and the Colab student.
+FINETUNE_UNCLEAR_SHARE = 0.4  # "unclear" share of the train split after rebalancing
+FINETUNE_REBALANCE_SEED = 0  # picks which "unclear" examples stay
+FINETUNE_TEST_INPUTS = "test_inputs.jsonl"  # the 200 test alerts, inputs only
