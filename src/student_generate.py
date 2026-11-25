@@ -83,21 +83,19 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--adapter", required=True)
     parser.add_argument("--base-model", default=BASE_MODEL)
+    parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     arguments = parser.parse_args()
     done = {line["alert_id"] for line in load_lines(arguments.output)}
     todo = [i for i in load_lines(arguments.inputs) if i["alert_id"] not in done]
     todo.sort(key=lambda i: len(i["messages"][1]["content"]))
     model, tokenizer = load_model(arguments.adapter, arguments.base_model)
     with arguments.output.open("a") as handle:
-        for start in range(0, len(todo), BATCH_SIZE):
-            for line in generate_batch(
-                model, tokenizer, todo[start : start + BATCH_SIZE]
-            ):
+        size = arguments.batch_size
+        for start in range(0, len(todo), size):
+            for line in generate_batch(model, tokenizer, todo[start : start + size]):
                 handle.write(json.dumps(line) + "\n")
             handle.flush()
-            print(
-                "%d / %d" % (min(start + BATCH_SIZE, len(todo)), len(todo)), flush=True
-            )
+            print("%d / %d" % (min(start + size, len(todo)), len(todo)), flush=True)
 
 
 if __name__ == "__main__":
