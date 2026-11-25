@@ -10,6 +10,7 @@ rule 1). Written to artifacts/dev/ (alerts, evidence/, ground truth).
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
 from src import config
 from src.data import load_dataset
@@ -20,9 +21,15 @@ from src.model import train_detector
 from src.run_step1 import write_evidence_files
 
 
-def build_dev_set(output_dir: Path, raw_csv: Path = config.RAW_CSV) -> Path:
+def build_dev_set(
+    output_dir: Path,
+    raw_csv: Path = config.RAW_CSV,
+    count: Optional[int] = None,
+    folder_name: str = config.DEV_FOLDER,
+) -> Path:
     """Write the dev alerts, their evidence and ground truth; returns the folder."""
-    folder = output_dir / config.DEV_FOLDER
+    count = config.DEV_ALERTS if count is None else count
+    folder = output_dir / folder_name
     dataset = load_dataset(raw_csv)
     features = load_or_build(dataset.transactions, config.CACHE_DIR, raw_csv, False)
     detector = train_detector(features, dataset.truth, dataset.split, FEATURE_NAMES)
@@ -30,7 +37,7 @@ def build_dev_set(output_dir: Path, raw_csv: Path = config.RAW_CSV) -> Path:
     scores = detector.model.predict_proba(features[window])[:, 1]
     alerts = build_alerts(
         dataset.transactions, features, FEATURE_NAMES, scores, window, detector,
-        config.DEV_ALERTS,
+        count,
     )  # fmt: skip
     write_alerts(alerts, folder)
     write_evidence_files(

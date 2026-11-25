@@ -147,3 +147,30 @@ STRONG_REASON_SHARE = (
     0.30  # a reason with at least this share of the top-5 push is "strong"
 )
 MODERATE_REASON_SHARE = 0.15  # at least this share is "moderate"; below it "weak"
+
+# V2 step 1: fine-tuning set for the case-note model (HI-Small, never LI-Small test).
+HI_RAW_CSV = GNN_TRANSFER_DIR / "data" / "Small_HI" / "HI-Small_Trans.csv"
+HI_PATTERNS_FILE = HI_RAW_CSV.parent / "HI-Small_Patterns.txt"
+HI_FEATURE_CACHE = CACHE_DIR / "features_hi_small"  # apart from the LI-Small cache
+FINETUNE_DIR = PROJECT_ROOT / "data" / "finetune"  # git-ignored
+FINETUNE_CANDIDATES_FOLDER = (
+    "candidates"  # alerts, evidence and truth before the teacher
+)
+FINETUNE_POOL = 20_000  # top-scored HI validation+test transactions to choose from
+FINETUNE_ALERTS = 2_200  # candidates kept; the fact check drops some of them
+FINETUNE_LAUNDERING_SHARE = 0.6  # about 60% laundering, 40% false alarms
+FINETUNE_ALERTS_PER_PATTERN = 8  # cap per pattern attempt, so no pattern dominates
+FINETUNE_FALSE_ALARMS_PER_SENDER = 2  # cap per sender, so false alarms differ
+FINETUNE_VALIDATION_SHARE = 0.1  # share of patterns (and false alarms) held out
+FINETUNE_SPLIT_SEED = 0  # shuffles patterns into train / validation
+FINETUNE_SAMPLE_SEED = 0  # picks the first small batch for review
+FINETUNE_DEV_ALERTS = 50  # LI-Small validation-period alerts to pick checkpoints
+FINETUNE_DEV_FOLDER = "dev_finetune"  # under artifacts/ (the 30-alert dev set is kept)
+STUDENT_PROMPT_VERSION = "v3"  # system prompt the student sees, in training and at test
+TEACHER_PROMPT_VERSION = "teacher"  # src/prompts/case_note_teacher.txt
+TEACHER_WORKERS = 8  # parallel API calls; the cache makes reruns free
+MIN_VISIBLE_PATTERN_TXNS = 3  # fewer visible: the evidence is thin, typology "unclear"
+TEACHER_LEAK_WORDS = (
+    "ground truth", "privileged", "labelled", "labeled", "told that", "confirmed",
+)  # fmt: skip
+TOKEN_ENCODING = "o200k_base"  # tokenizer of gpt-4.1-mini, for length statistics

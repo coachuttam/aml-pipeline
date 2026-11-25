@@ -13,3 +13,4 @@ python-dotenv
 streamlit
 networkx
 plotly
+tiktoken
