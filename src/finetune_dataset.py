@@ -25,6 +25,7 @@ from src.case_note_input import build_user_message, load_prompt, response_format
 from src.llm_client import request_note
 from src.teacher import (
     build_teacher_message,
+    is_pattern_visible,
     parse_teacher_note,
     privileged_truth,
     rejection_reasons,
@@ -66,6 +67,7 @@ def make_record(client: Any, alert: Dict, evidence: Dict, row: Dict) -> Dict:
         "is_laundering": int(row["is_laundering"]),
         "pattern_type": row["pattern_type"],
         "typology_to_use": truth["typology_to_use"],
+        "pattern_visible": is_pattern_visible(truth),
         "note": note,
         "rejected": rejection_reasons(note, evidence, truth),
         "input_tokens": result["input_tokens"],

@@ -174,3 +174,7 @@ TEACHER_LEAK_WORDS = (
     "ground truth", "privileged", "labelled", "labeled", "told that", "confirmed",
 )  # fmt: skip
 TOKEN_ENCODING = "o200k_base"  # tokenizer of gpt-4.1-mini, for length statistics
+
+# V2 evaluation scheme (same for V1, prompt v3 and the fine-tuned student).
+PATTERN_VISIBLE_FILE = "pattern_visible.parquet"  # test alerts, evaluation only
+EVAL_V2_FILE_TEMPLATE = "eval_v2_%s.json"  # one report per notes file, in artifacts/

@@ -48,6 +48,14 @@ def privileged_truth(row: Dict, evidence: Dict) -> Dict:
     }
 
 
+def is_pattern_visible(truth: Dict) -> bool:
+    """True for laundering whose evidence shows enough of its pattern to see it."""
+    shown = truth.get("pattern_transaction_ids_in_evidence", [])
+    return (
+        bool(truth["is_laundering"]) and len(shown) >= config.MIN_VISIBLE_PATTERN_TXNS
+    )
+
+
 def build_teacher_message(student_message: str, truth: Dict) -> str:
     """The student's exact input followed by the privileged block."""
     return student_message + "\n\n" + TRUTH_HEADER + json.dumps(truth, indent=1)

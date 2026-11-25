@@ -6,6 +6,7 @@ Example:
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from typing import Dict, List
 
@@ -18,12 +19,14 @@ def typology_mix(records: List[Dict]) -> Dict[str, int]:
     return dict(Counter(r["note"]["typology"] for r in records).most_common())
 
 
+def reason_kind(reason: str) -> str:
+    """A rejection with its ids and amounts removed, for example "txn id N"."""
+    return re.sub(r"[\d.,]+", "N", reason.split(" in text")[0].split(" not in")[0])
+
+
 def drop_reasons(records: List[Dict]) -> Dict[str, int]:
     """How often each kind of rejection happened (a note can have several)."""
-    kinds = Counter()
-    for record in records:
-        for reason in record["rejected"]:
-            kinds[reason.split(" not in")[0].split(" %")[0][:60]] += 1
+    kinds = Counter(reason_kind(r) for rec in records for r in rec["rejected"])
     return dict(kinds.most_common())
 
 
