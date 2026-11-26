@@ -2,10 +2,12 @@
 
     python -m src.score_student --set dev  --raw data/finetune/dev_raw_<run>.jsonl
     python -m src.score_student --set test --raw data/finetune/test_raw_<run>.jsonl
+    python -m src.score_student --set val  --raw data/finetune/val_raw_<run>.jsonl
 
 Each answer is parsed (every field must be there), fact-checked against its own
-evidence file, and written as `notes_student.json` in the alert folder (artifacts/
-dev_finetune/ or artifacts/), in the same record format as run_step2. Then the
+evidence file, and written as `notes_student.json` in the alert folder
+(artifacts/dev_finetune/, artifacts/, or data/finetune/val_set/ for the HI-Small
+validation set), in the same record format as run_step2. Then the
 V2 evaluation scheme (src/eval_v2.py) is written beside it
 (eval_v2_notes_student.json). Runs on a CPU; the test set is scored once, from the
 file the GPU made.
@@ -73,12 +75,14 @@ def score_set(folder: Path, raw_path: Path) -> Dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--set", choices=["dev", "test"], required=True)
+    parser.add_argument("--set", choices=["dev", "test", "val"], required=True)
     parser.add_argument("--raw", type=Path, required=True)
     arguments = parser.parse_args()
     folder = config.ARTIFACTS_DIR
     if arguments.set == "dev":
         folder = folder / config.FINETUNE_DEV_FOLDER
+    if arguments.set == "val":
+        folder = config.FINETUNE_DIR / config.FINETUNE_VAL_FOLDER
     print(json.dumps(score_set(folder, arguments.raw), indent=1))
 
 

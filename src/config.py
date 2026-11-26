@@ -190,3 +190,15 @@ EVAL_V2_FILE_TEMPLATE = "eval_v2_%s.json"  # one report per notes file, in artif
 FINETUNE_TRAIN_LAUNDERING_SHARE = 0.5  # laundering share of train after rebalancing
 FINETUNE_REBALANCE_SEED = 0  # picks which "unclear" examples stay
 FINETUNE_TEST_INPUTS = "test_inputs.jsonl"  # the 200 test alerts, inputs only
+
+# V2 diagnosis: HI-Small validation inputs, and the rule-based typology baseline.
+FINETUNE_VAL_FOLDER = "val_set"  # under data/finetune/: 50 HI validation alerts
+FINETUNE_VAL_INPUTS = "val_inputs.jsonl"  # their inputs only, for the Colab notebook
+VAL_SET_VISIBLE = 20  # visible-pattern laundering, about as many as dev's 19
+VAL_SET_FALSE_ALARMS = 20  # about as many as dev's 21
+VAL_SET_HIDDEN = 10  # laundering whose pattern the evidence does not show, as dev's 10
+VAL_SET_SEED = 0  # picks which validation alerts go in
+RULE_WINDOW_HOURS = (6, 12, 24, 72, 168)  # time windows the rule baseline tries
+RULE_MIN_DEGREES = (2, 3, 4, 5, 6, 8)  # counterparties that make a fan
+RULE_HUB_MIN_PAYERS = (1, 2, 3)  # payers that make a gather-scatter hub
+QWEN_TOKENIZER = "Qwen/Qwen2.5-7B-Instruct"  # for loss-token counts, if installed
