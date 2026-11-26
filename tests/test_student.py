@@ -25,25 +25,24 @@ def meta_row(alert_id, kind, split="train") -> dict:
 
 ROWS = (
     [meta_row("t%d" % i, "typed") for i in range(60)]
-    + [meta_row("f%d" % i, "false") for i in range(80)]
     + [meta_row("n%d" % i, "thin") for i in range(20)]
+    + [meta_row("f%d" % i, "false") for i in range(150)]
     + [meta_row("v%d" % i, "false", "validation") for i in range(10)]
 )
 
 
-def test_rebalancing_keeps_every_typed_example_and_cuts_unclear_to_forty_percent():
-    kept = rebalance_ids(ROWS)
-    typed = [i for i in kept if i.startswith("t")]
-    unclear = [i for i in kept if i[0] in "fn"]
-    assert len(typed) == 60
-    assert len(unclear) == 40  # 40 / (60 + 40) = 0.4
-    assert not [i for i in kept if i.startswith("v")]
+def test_rebalancing_keeps_all_laundering_and_makes_it_half_of_train():
+    kept, missing = rebalance_ids(ROWS)
+    assert sum(i[0] in "tn" for i in kept) == 80  # every typed and thin example
+    assert sum(i.startswith("f") for i in kept) == 80  # 80 / (80 + 80) = 0.5
+    assert missing == 0 and not [i for i in kept if i.startswith("v")]
 
 
-def test_rebalancing_keeps_the_two_unclear_kinds_in_proportion():
-    kept = rebalance_ids(ROWS)
-    assert sum(i.startswith("f") for i in kept) == 32
-    assert sum(i.startswith("n") for i in kept) == 8
+def test_rebalancing_reports_how_many_false_alarms_were_missing():
+    few = [r for r in ROWS if not r["alert_id"].startswith("f")][:80]
+    few += [meta_row("f%d" % i, "false") for i in range(50)]
+    kept, missing = rebalance_ids(few)
+    assert sum(i.startswith("f") for i in kept) == 50 and missing == 30
 
 
 def test_rebalancing_is_seeded_and_repeatable():

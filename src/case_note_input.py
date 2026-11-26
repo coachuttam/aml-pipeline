@@ -1,6 +1,7 @@
 """Build the model's input and the JSON schema of its answer.
 
-The input holds the score, plain-English reasons and evidence transactions only. No
+The input holds the score, plain-English reasons and evidence transactions only (prompt
+v4 gets the evidence transactions only). No
 label and no pattern type exists in these files (AGENTS.md rule 2).
 """
 
@@ -10,7 +11,7 @@ import json
 from typing import Dict, List
 
 from src import config
-from src.reasons import blind_reasons, plain_reasons
+from src.reasons import plain_reasons
 
 
 def load_prompt(version: str) -> str:
@@ -40,15 +41,21 @@ def build_user_message(alert: Dict, evidence: Dict) -> str:
 
 
 def build_blind_user_message(alert: Dict, evidence: Dict) -> str:
-    """Like `build_user_message` but with no model score and no push sizes."""
-    payload = json.loads(build_user_message(alert, evidence))
-    del payload["model_score"]
-    payload["reasons"] = blind_reasons(alert)
+    """Evidence only: the alert transaction id and the transactions, nothing else.
+
+    No model score, no SHAP reasons, no alert id and no count of linked transactions
+    found: each of these differs between detectors and datasets (a student that sees
+    them learns the dataset, not the transactions). The reasons stay in the UI.
+    """
+    payload = {
+        "alert_transaction_id": evidence["alert_transaction"]["transaction_id"],
+        "transactions": evidence_transactions(evidence),
+    }
     return json.dumps(payload, indent=1)
 
 
 def user_message_for(version: str, alert: Dict, evidence: Dict) -> str:
-    """The input a prompt version expects (blind versions drop the score)."""
+    """The input a prompt version expects (blind versions get the evidence only)."""
     if version in config.BLIND_PROMPT_VERSIONS:
         return build_blind_user_message(alert, evidence)
     return build_user_message(alert, evidence)

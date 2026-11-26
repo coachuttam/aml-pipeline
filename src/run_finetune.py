@@ -2,9 +2,10 @@
 
     python -m src.run_finetune pool       # HI-Small detector, top 60,000 (slow)
     python -m src.run_finetune select     # candidates from the pool, with evidence
+    python -m src.run_finetune more_false_alarms   # train-only false alarms
     python -m src.run_finetune dev        # 50 LI-Small validation alerts (retrains)
     python -m src.run_finetune generate [--count 20]   # teacher notes (reuses old)
-    python -m src.run_finetune rebalance  # train: all typed, unclear to 40%
+    python -m src.run_finetune rebalance  # train: all laundering, 50% laundering
     python -m src.run_finetune inputs     # dev and test inputs, no note, no truth
     python -m src.run_finetune cues       # cue distributions, train vs dev vs test
 
@@ -24,7 +25,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 from src import config
-from src.finetune_alerts import build_pool, select_candidates
+from src.finetune_alerts import add_false_alarms, build_pool, select_candidates
 from src.finetune_cues import build_cue_report
 from src.finetune_dataset import (
     example_for,
@@ -39,7 +40,16 @@ from src.finetune_select import pick_sample
 from src.llm_client import make_client
 from src.run_dev import build_dev_set
 
-STEPS = ["pool", "select", "dev", "generate", "rebalance", "inputs", "cues"]
+STEPS = [
+    "pool",
+    "select",
+    "more_false_alarms",
+    "dev",
+    "generate",
+    "rebalance",
+    "inputs",
+    "cues",
+]
 
 
 def write_jsonl(path: Path, items: List[Dict]) -> None:
@@ -89,7 +99,7 @@ def generate(count: Optional[int]) -> Dict:
     if count:
         scores = pd.read_parquet(candidates / config.ALERTS_FILE)[["alert_id", "score"]]
         chosen = pick_sample(chosen.merge(scores, on="alert_id"), count)
-    old_notes = load_old_notes(data / "old_v1", data / "candidates_v1")
+    old_notes = load_old_notes(data / "old_v2", data / "candidates_v2")
     records = generate_records(make_client(), candidates, chosen, old_notes)
     folder = data / ("sample" if count else "")
     return write_dataset(folder, candidates, records)
@@ -107,6 +117,9 @@ def main() -> None:
         build_pool(candidates / "pool")
     elif arguments.step == "select":
         select_candidates(candidates / "pool", candidates, dev_folder)
+    elif arguments.step == "more_false_alarms":
+        count = arguments.count or config.FINETUNE_EXTRA_FALSE_ALARMS
+        print("added:", add_false_alarms(candidates / "pool", candidates, count))
     elif arguments.step == "dev":
         build_dev_set(
             config.ARTIFACTS_DIR, config.RAW_CSV, config.FINETUNE_DEV_ALERTS,

@@ -119,3 +119,44 @@ def select_candidates(
         alerts_out, dataset, folder / config.EVIDENCE_FOLDER, config.EVIDENCE_STRATEGY
     )
     return folder
+
+
+def add_false_alarms(
+    pool_folder: Path, folder: Path, count: int, raw_csv: Path = config.HI_RAW_CSV
+) -> int:
+    """Add `count` more train-only false alarms from the pool (the next best scored).
+
+    Validation and the laundering examples stay as they are. The same per-sender cap
+    applies, counting the false alarms already chosen.
+    """
+    pool = pd.read_parquet(pool_folder / config.ALERTS_FILE)
+    pool_truth = pd.read_parquet(pool_folder / config.GROUND_TRUTH_FILE)
+    alerts = pd.read_parquet(folder / config.ALERTS_FILE)
+    truth = pd.read_parquet(folder / config.GROUND_TRUTH_FILE)
+    taken = alerts.merge(truth[["alert_id", "is_laundering"]], on="alert_id")
+    senders = taken[taken["is_laundering"] == 0]["from_account"].value_counts()
+    fresh = pool[~pool["edge_id"].isin(truth["edge_id"])]
+    fresh = fresh[
+        fresh["alert_id"].isin(pool_truth[pool_truth["is_laundering"] == 0]["alert_id"])
+    ]
+    fresh = fresh.sort_values("score", ascending=False, kind="stable")
+    used = (
+        fresh["from_account"].map(senders).fillna(0)
+        + fresh.groupby("from_account").cumcount()
+    )
+    fresh = fresh[used < config.FINETUNE_FALSE_ALARMS_PER_SENDER].head(count).copy()
+    first = len(alerts) + 1
+    fresh["alert_id"] = ["A%04d" % (first + i) for i in range(len(fresh))]
+    fresh["rank"] = range(first, first + len(fresh))
+    added_truth = pd.DataFrame({
+        "alert_id": fresh["alert_id"], "edge_id": fresh["edge_id"], "is_laundering": 0,
+        "pattern_type": None, "attempt_id": float("nan"), "split": "train",
+        "pattern_edge_ids": "[]",
+    })  # fmt: skip
+    dataset = load_dataset(raw_csv)
+    write_evidence_files(
+        fresh, dataset, folder / config.EVIDENCE_FOLDER, config.EVIDENCE_STRATEGY
+    )
+    write_alerts(pd.concat([alerts, fresh], ignore_index=True), folder)
+    write_ground_truth(pd.concat([truth, added_truth], ignore_index=True), folder)
+    return len(fresh)

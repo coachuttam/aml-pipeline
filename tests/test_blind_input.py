@@ -26,17 +26,15 @@ from tests.test_finetune import ALERT, EVIDENCE, good_note
 FIELDS = list(good_note())
 
 
-def test_blind_input_has_no_score_and_no_push_sizes():
+def test_evidence_only_input_has_no_score_reasons_alert_id_or_found_count():
     message = build_blind_user_message(ALERT, EVIDENCE)
+    assert set(json.loads(message)) == {"alert_transaction_id", "transactions"}
     text = message.lower()
-    assert "model_score" not in text and "score" not in text
-    assert "raises" not in text and "lowers" not in text
-    assert json.loads(message)["reasons"] == [
-        "The sender made 5 payments in the last 7 days."
-    ]
+    for word in ("score", "reason", "raises", "lowers", "alert_id", "found"):
+        assert word not in text
 
 
-def test_blind_input_keeps_the_same_transactions_as_the_scored_input():
+def test_evidence_only_input_keeps_the_same_transactions_as_the_scored_input():
     scored = json.loads(build_user_message(ALERT, EVIDENCE))
     blind = json.loads(build_blind_user_message(ALERT, EVIDENCE))
     assert blind["transactions"] == scored["transactions"]
@@ -46,7 +44,8 @@ def test_blind_input_keeps_the_same_transactions_as_the_scored_input():
 def test_prompt_v4_uses_the_blind_input_and_v3_the_scored_one():
     assert "model_score" in user_message_for("v3", ALERT, EVIDENCE)
     assert "model_score" not in user_message_for("v4", ALERT, EVIDENCE)
-    assert "model score" not in load_prompt("v4").lower()
+    prompt = load_prompt("v4").lower()
+    assert "model score" not in prompt and "reasons the model" not in prompt
     assert config.STUDENT_PROMPT_VERSION in config.BLIND_PROMPT_VERSIONS
 
 

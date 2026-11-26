@@ -1,8 +1,9 @@
 """Reuse teacher notes that do not depend on the fields the student input lost.
 
-The student input no longer has the model score or the size of each reason's push.
+The student input is now the evidence only: no model score, no reasons, no counts.
 A note written before that change is still correct for the same transaction (same
-evidence, same truth) if it never talks about the score, the model or a push. Those
+evidence, same truth) if it never talks about the score, the model, a push or a claim
+that only the reason sentences or the "found" count could support. Those
 notes are reused instead of paying the teacher again; the rest are regenerated.
 
 Example:
@@ -22,12 +23,31 @@ import pandas as pd
 from src import config
 
 REMOVED_FIELDS = re.compile(r"\bscore|\bmodel\b|\braises\b|\blowers\b|\bpush", re.I)
+# Wording that comes from the SHAP reason sentences (counts over the last hour or days,
+# new senders, usual amounts, earlier payments) or from the evidence's "found" count:
+# none of it can be seen in the 50 evidence transactions.
+REASON_CLAIMS = re.compile(
+    r"\blast (?:\d+ )?(?:hour|hours|day|days|24 hours|7 days)\b"
+    r"|\bwithin the (?:last|past) \w+ (?:hour|day)"
+    r"|\b\d+ new \w+|\bnew (?:senders|accounts|partners) in\b"
+    r"|\b(?:usual|average|typical|mean) (?:amount|payment|transaction)"
+    r"|\btimes the\b|\bso far\b|\b(?:in|out)[- ]?degree\b|\bratio\b"
+    r"|first[- ]time|not paid each other|paid each other before"
+    r"|\blinked transactions (?:were )?found|\b\d[\d,]* linked transactions",
+    re.I,
+)
 OLD_EXAMPLE_FILES = ("train_full.jsonl", "validation.jsonl")
 
 
+def relies_on_removed_input(note: Dict) -> bool:
+    """True when the note talks about the score, the model, a push or a reason claim."""
+    text = json.dumps(note)
+    return bool(REMOVED_FIELDS.search(text) or REASON_CLAIMS.search(text))
+
+
 def can_reuse(note: Dict) -> bool:
-    """True when the note's text never mentions the score, the model or a push."""
-    return not REMOVED_FIELDS.search(json.dumps(note))
+    """True when the note can be kept for the evidence-only input."""
+    return not relies_on_removed_input(note)
 
 
 def load_old_notes(old_folder: Path, old_candidates: Path) -> Dict[int, Dict]:

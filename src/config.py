@@ -159,6 +159,9 @@ FINETUNE_CANDIDATES_FOLDER = (
 )
 FINETUNE_POOL = 60_000  # top-scored HI validation+test transactions to choose from
 FINETUNE_ALERTS = 2_200  # candidates kept; the fact check drops some of them
+FINETUNE_EXTRA_FALSE_ALARMS = (
+    200  # more train-only false alarms, to reach the laundering share
+)
 FINETUNE_LAUNDERING_SHARE = 0.6  # about 60% laundering, 40% false alarms
 FINETUNE_ALERTS_PER_PATTERN = 8  # cap per pattern attempt, so no pattern dominates
 FINETUNE_FALSE_ALARMS_PER_SENDER = 2  # cap per sender, so false alarms differ
@@ -184,6 +187,6 @@ PATTERN_VISIBLE_FILE = "pattern_visible.parquet"  # test alerts, evaluation only
 EVAL_V2_FILE_TEMPLATE = "eval_v2_%s.json"  # one report per notes file, in artifacts/
 
 # V2 training set: rebalance, and the Colab student.
-FINETUNE_UNCLEAR_SHARE = 0.4  # "unclear" share of the train split after rebalancing
+FINETUNE_TRAIN_LAUNDERING_SHARE = 0.5  # laundering share of train after rebalancing
 FINETUNE_REBALANCE_SEED = 0  # picks which "unclear" examples stay
 FINETUNE_TEST_INPUTS = "test_inputs.jsonl"  # the 200 test alerts, inputs only

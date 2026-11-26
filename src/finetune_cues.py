@@ -21,6 +21,7 @@ from typing import Dict
 import pandas as pd
 
 from src import config
+from src.finetune_rebalance import example_alert_id
 from src.reasons import display_reasons
 
 SCORE_BINS = [
@@ -71,10 +72,7 @@ def cue_profile(alerts: pd.DataFrame, truth: pd.DataFrame) -> Dict:
 
 def train_subset(candidates: Path, train_file: Path) -> Dict:
     """Cue profile of the alerts that are in a train file (read by alert id)."""
-    ids = {
-        json.loads(json.loads(line)["messages"][1]["content"])["alert_id"]
-        for line in train_file.open()
-    }
+    ids = {example_alert_id(json.loads(line)) for line in train_file.open()}
     alerts = pd.read_parquet(candidates / config.ALERTS_FILE)
     truth = pd.read_parquet(candidates / config.GROUND_TRUTH_FILE)
     return cue_profile(alerts[alerts["alert_id"].isin(ids)], truth)

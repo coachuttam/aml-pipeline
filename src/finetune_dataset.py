@@ -45,8 +45,8 @@ def compact_json(text: str) -> str:
 def student_messages(alert: Dict, evidence: Dict) -> List[Dict]:
     """System and user message of the student: no label, no pattern, no truth.
 
-    The user message holds exactly the content prompt v4 and the teacher get (no
-    model score, no push sizes), only written without indentation: with Qwen's
+    The user message is the evidence only (prompt v4's input), written without
+    indentation: with Qwen's
     one-token-per-digit numbers the indented form needs about 8.8k tokens on
     average, over the 8,192 limit for 96% of the examples.
     """
@@ -146,7 +146,8 @@ def example_for(folder: Path, record: Dict) -> Dict:
     alerts = pd.read_parquet(folder / config.ALERTS_FILE).set_index("alert_id")
     alert = {**alerts.loc[record["alert_id"]].to_dict(), "alert_id": record["alert_id"]}
     evidence = load_evidence(folder, record["alert_id"])
-    return chat_example(student_messages(alert, evidence), record["note"])
+    example = chat_example(student_messages(alert, evidence), record["note"])
+    return {"alert_id": record["alert_id"], **example}
 
 
 def token_count(example: Dict) -> int:
