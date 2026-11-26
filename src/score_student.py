@@ -1,7 +1,7 @@
 """Score the student's raw answers: same fact check and eval_v2 as V1 and v3.
 
-    python -m src.score_student --set dev  --raw data/finetune/dev_raw.jsonl
-    python -m src.score_student --set test --raw data/finetune/test_raw.jsonl
+    python -m src.score_student --set dev  --raw data/finetune/dev_raw_<run>.jsonl
+    python -m src.score_student --set test --raw data/finetune/test_raw_<run>.jsonl
 
 Each answer is parsed (every field must be there), fact-checked against its own
 evidence file, and written as `notes_student.json` in the alert folder (artifacts/
