@@ -8,6 +8,7 @@
     python -m src.run_finetune rebalance  # train: all laundering, 50% laundering
     python -m src.run_finetune inputs     # dev and test inputs, no note, no truth
     python -m src.run_finetune cues       # cue distributions, train vs dev vs test
+    python -m src.run_finetune v3         # train_v3.jsonl: balanced, 35% "unclear"
 
 Output goes to data/finetune/ (git-ignored): train.jsonl, validation.jsonl (chat
 format), meta.jsonl (truth per example, for analysis only), report.json,
@@ -37,6 +38,7 @@ from src.finetune_rebalance import rebalance_files
 from src.finetune_report import build_report
 from src.finetune_reuse import load_old_notes
 from src.finetune_select import pick_sample
+from src.finetune_v3 import build_train_v3, example_tokens, l4_hours
 from src.llm_client import make_client
 from src.run_dev import build_dev_set
 
@@ -49,7 +51,9 @@ STEPS = [
     "rebalance",
     "inputs",
     "cues",
+    "v3",
 ]
+V3_EPOCHS = 2  # the notebook's EPOCHS for the typology2 run
 
 
 def write_jsonl(path: Path, items: List[Dict]) -> None:
@@ -105,6 +109,29 @@ def generate(count: Optional[int]) -> Dict:
     return write_dataset(folder, candidates, records)
 
 
+def build_v3(data: Path, candidates: Path) -> Dict:
+    """train_v3.jsonl, the mix before and after, and the L4 time estimate."""
+    from src.finetune_diagnose import load_token_counter, target_mix
+
+    truth = pd.read_parquet(candidates / config.GROUND_TRUTH_FILE)
+    report = {
+        "after": build_train_v3(data, dict(zip(truth["alert_id"], truth["attempt_id"])))
+    }
+    meta = [json.loads(line) for line in (data / "meta.jsonl").open()]
+    names = ("train.jsonl", config.FINETUNE_V3_TRAIN, "validation.jsonl")
+    files = {n: [json.loads(x) for x in (data / n).open()] for n in names}
+    report["before"] = target_mix({"train": files["train.jsonl"]}, meta)["train"]
+    counter = load_token_counter()
+    tokens = {n: sum(example_tokens(e, counter["count"]) for e in lines)
+              for n, lines in files.items()}  # fmt: skip
+    report["tokens"] = {"tokenizer": counter["name"], **tokens}
+    report["l4_hours_estimate"] = l4_hours(
+        tokens[config.FINETUNE_V3_TRAIN], tokens["validation.jsonl"], V3_EPOCHS
+    )
+    (data / "train_v3_report.json").write_text(json.dumps(report, indent=1) + "\n")
+    return report
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("step", choices=STEPS)
@@ -135,6 +162,8 @@ def main() -> None:
         report = build_cue_report()
         (data / "cue_report.json").write_text(json.dumps(report, indent=1) + "\n")
         print(json.dumps(report, indent=1))
+    elif arguments.step == "v3":
+        print(json.dumps(build_v3(data, candidates), indent=1))
     else:
         print(json.dumps(generate(arguments.count), indent=1))
 

@@ -202,3 +202,15 @@ RULE_WINDOW_HOURS = (6, 12, 24, 72, 168)  # time windows the rule baseline tries
 RULE_MIN_DEGREES = (2, 3, 4, 5, 6, 8)  # counterparties that make a fan
 RULE_HUB_MIN_PAYERS = (1, 2, 3)  # payers that make a gather-scatter hub
 QWEN_TOKENIZER = "Qwen/Qwen2.5-7B-Instruct"  # for loss-token counts, if installed
+
+# V2 final retrain (train_v3.jsonl): the student answered "unclear" for nearly all.
+FINETUNE_V3_TRAIN = "train_v3.jsonl"  # the Colab notebook trains on this file
+FINETUNE_V3_PER_TYPOLOGY = 140  # near the median class (115): caps 231, doubles 76
+FINETUNE_V3_UNCLEAR_SHARE = 0.35  # was 63.5%: the student learned to always hedge
+FINETUNE_V3_FALSE_ALARM_SHARE = 0.75  # of "unclear"; the rest thin laundering (78/22)
+FINETUNE_V3_SEED = 0  # picks capped examples, duplicates and the file order
+L4_TOKENS_PER_SECOND = 550  # training speed assumed for estimates (not measured)
+VAL_GATE_MIN_TYPOLOGY_CORRECT = 10  # of 20 visible-pattern val alerts, before dev
+VAL_GATE_MIN_UNCLEAR_FALSE_ALARMS = 0.5  # share of val false alarms said "unclear"
+EVAL_SPEEDUP = 3  # a forward-only validation pass costs about a third of a train step
+CHAT_TEMPLATE_TOKENS = 20  # role markers Qwen's chat template adds per example

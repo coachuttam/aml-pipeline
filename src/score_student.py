@@ -4,6 +4,8 @@
     python -m src.score_student --set test --raw data/finetune/test_raw_<run>.jsonl
     python -m src.score_student --set val  --raw data/finetune/val_raw_<run>.jsonl
 
+For val it also prints the gate (src/finetune_v3.val_gate): run dev only if it passed.
+
 Each answer is parsed (every field must be there), fact-checked against its own
 evidence file, and written as `notes_student.json` in the alert folder
 (artifacts/dev_finetune/, artifacts/, or data/finetune/val_set/ for the HI-Small
@@ -26,6 +28,7 @@ from src import config
 from src.case_note_input import evidence_transactions
 from src.eval_v2 import score_file
 from src.fact_check import check_note, count_claims
+from src.finetune_v3 import val_gate
 from src.teacher import parse_teacher_note
 from src.totals import totals_by_currency
 
@@ -83,7 +86,10 @@ def main() -> None:
         folder = folder / config.FINETUNE_DEV_FOLDER
     if arguments.set == "val":
         folder = config.FINETUNE_DIR / config.FINETUNE_VAL_FOLDER
-    print(json.dumps(score_set(folder, arguments.raw), indent=1))
+    report = score_set(folder, arguments.raw)
+    if arguments.set == "val":
+        report["gate"] = val_gate(report)
+    print(json.dumps(report, indent=1))
 
 
 if __name__ == "__main__":
