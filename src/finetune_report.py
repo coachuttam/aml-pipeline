@@ -52,6 +52,8 @@ def build_report(records: List[Dict], token_counts: Dict[str, List[int]]) -> Dic
         "generated": len(records),
         "kept": len(kept),
         "dropped": len(records) - len(kept),
+        "notes_reused": sum(r["reused"] for r in records),
+        "new_teacher_calls": sum(not r["reused"] for r in records),
         "by_split": split_counts(records, kept),
         "typology_mix_kept": typology_mix(kept),
         "drop_reasons": drop_reasons(records),

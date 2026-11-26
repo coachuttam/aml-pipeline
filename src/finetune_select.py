@@ -16,6 +16,9 @@ Example:
 
 from __future__ import annotations
 
+import json
+from typing import Dict, Optional
+
 import numpy as np
 import pandas as pd
 
@@ -42,13 +45,46 @@ def false_alarm_candidates(table: pd.DataFrame) -> pd.DataFrame:
     return clean[turn < config.FINETUNE_FALSE_ALARMS_PER_SENDER]
 
 
-def select_alerts(table: pd.DataFrame) -> pd.DataFrame:
-    """About FINETUNE_ALERTS alerts, FINETUNE_LAUNDERING_SHARE of them laundering."""
+def top_feature(reasons_json: str) -> str:
+    """The feature of an alert's strongest reason."""
+    return json.loads(reasons_json)[0]["feature"]
+
+
+def take_by_weight(ordered: pd.DataFrame, count: int, weights: Dict[str, float]):
+    """`count` rows in preference order, with the top-feature mix of `weights`.
+
+    Each feature gets its share (as far as rows exist); what is missing is filled
+    from the best rows left, so the count is met whenever enough rows exist.
+    """
+    if not weights:
+        return ordered.head(count)
+    picked = [
+        ordered[ordered["top_feature"] == feature].head(int(round(count * share)))
+        for feature, share in weights.items()
+    ]
+    chosen = pd.concat(picked)
+    rest = ordered[~ordered.index.isin(chosen.index)]
+    return pd.concat([chosen, rest.head(max(count - len(chosen), 0))]).head(count)
+
+
+def select_alerts(
+    table: pd.DataFrame, weights: Optional[Dict[str, float]] = None
+) -> pd.DataFrame:
+    """About FINETUNE_ALERTS alerts, FINETUNE_LAUNDERING_SHARE of them laundering.
+
+    With `weights` (top-feature shares taken from the dev alerts) each class gets the
+    same top-reason mix, so the first reason says nothing about the class.
+    """
     wanted = config.FINETUNE_ALERTS
     laundering_count = int(round(wanted * config.FINETUNE_LAUNDERING_SHARE))
-    laundering = laundering_candidates(table).head(laundering_count)
-    false_alarms = false_alarm_candidates(table).head(wanted - len(laundering))
-    chosen = pd.concat([laundering, false_alarms]).drop(columns=["turn"])
+    table = table.assign(top_feature=table["reasons_json"].map(top_feature))
+    laundering = take_by_weight(
+        laundering_candidates(table), laundering_count, weights or {}
+    )
+    false_alarms = take_by_weight(
+        false_alarm_candidates(table), wanted - len(laundering), weights or {}
+    )
+    chosen = pd.concat([laundering, false_alarms]).drop(columns=["turn", "top_feature"])
     return chosen.sort_values("score", ascending=False, kind="stable").reset_index(
         drop=True
     )

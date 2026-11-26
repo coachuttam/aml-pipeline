@@ -104,4 +104,4 @@ def test_the_gpu_script_and_notebook_are_valid_python_and_use_the_same_model():
         ast.parse("\n".join(lines))
     assert "Qwen/Qwen2.5-7B-Instruct" in script
     assert "Qwen/Qwen2.5-7B-Instruct" in "".join(code[1]["source"])
-    assert config.STUDENT_PROMPT_VERSION == "v3"
+    assert config.STUDENT_PROMPT_VERSION == "v4"

@@ -102,6 +102,7 @@ PROMPT_VERSIONS = (
     "v1",
     "v2",
     "v3",
+    "v4",
 )  # prompts live in src/prompts/case_note_<version>.txt
 DEV_ALERTS = 30  # top validation-period alerts used to choose between prompts
 DEV_FOLDER = "dev"  # artifacts/dev/: alerts, evidence and ground truth for the dev set
@@ -156,7 +157,7 @@ FINETUNE_DIR = PROJECT_ROOT / "data" / "finetune"  # git-ignored
 FINETUNE_CANDIDATES_FOLDER = (
     "candidates"  # alerts, evidence and truth before the teacher
 )
-FINETUNE_POOL = 20_000  # top-scored HI validation+test transactions to choose from
+FINETUNE_POOL = 60_000  # top-scored HI validation+test transactions to choose from
 FINETUNE_ALERTS = 2_200  # candidates kept; the fact check drops some of them
 FINETUNE_LAUNDERING_SHARE = 0.6  # about 60% laundering, 40% false alarms
 FINETUNE_ALERTS_PER_PATTERN = 8  # cap per pattern attempt, so no pattern dominates
@@ -166,7 +167,10 @@ FINETUNE_SPLIT_SEED = 0  # shuffles patterns into train / validation
 FINETUNE_SAMPLE_SEED = 0  # picks the first small batch for review
 FINETUNE_DEV_ALERTS = 50  # LI-Small validation-period alerts to pick checkpoints
 FINETUNE_DEV_FOLDER = "dev_finetune"  # under artifacts/ (the 30-alert dev set is kept)
-STUDENT_PROMPT_VERSION = "v3"  # system prompt the student sees, in training and at test
+STUDENT_PROMPT_VERSION = "v4"  # system prompt the student sees, in training and at test
+BLIND_PROMPT_VERSIONS = (
+    "v4",
+)  # versions whose input has no model score and no push sizes
 TEACHER_PROMPT_VERSION = "teacher"  # src/prompts/case_note_teacher.txt
 TEACHER_WORKERS = 8  # parallel API calls; the cache makes reruns free
 MIN_VISIBLE_PATTERN_TXNS = 3  # fewer visible: the evidence is thin, typology "unclear"

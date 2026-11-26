@@ -10,7 +10,7 @@ import json
 from typing import Dict, List
 
 from src import config
-from src.reasons import plain_reasons
+from src.reasons import blind_reasons, plain_reasons
 
 
 def load_prompt(version: str) -> str:
@@ -37,6 +37,21 @@ def build_user_message(alert: Dict, evidence: Dict) -> str:
         "transactions": evidence_transactions(evidence),
     }  # fmt: skip
     return json.dumps(payload, indent=1)
+
+
+def build_blind_user_message(alert: Dict, evidence: Dict) -> str:
+    """Like `build_user_message` but with no model score and no push sizes."""
+    payload = json.loads(build_user_message(alert, evidence))
+    del payload["model_score"]
+    payload["reasons"] = blind_reasons(alert)
+    return json.dumps(payload, indent=1)
+
+
+def user_message_for(version: str, alert: Dict, evidence: Dict) -> str:
+    """The input a prompt version expects (blind versions drop the score)."""
+    if version in config.BLIND_PROMPT_VERSIONS:
+        return build_blind_user_message(alert, evidence)
+    return build_user_message(alert, evidence)
 
 
 def response_format() -> Dict:

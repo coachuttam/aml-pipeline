@@ -10,8 +10,8 @@ import pandas as pd
 import pytest
 
 from src import config
-from src.case_note_input import build_user_message
-from src.finetune_alerts import build_candidates
+from src.case_note_input import build_blind_user_message
+from src.finetune_alerts import build_pool, select_candidates
 from src.finetune_dataset import (
     chat_example,
     length_summary,
@@ -64,6 +64,8 @@ def alert_table() -> pd.DataFrame:
                        "from_account"],
     )  # fmt: skip
     table["alert_id"] = ["X%03d" % i for i in range(len(table))]
+    reasons = [{"feature": "payment_format_code", "value": 0.0, "shap": 1.0}]
+    table["reasons_json"] = json.dumps(reasons)
     return table
 
 
@@ -204,7 +206,7 @@ def test_make_record_keeps_a_good_teacher_note_and_drops_a_bad_one(
     tmp_path, monkeypatch
 ):
     monkeypatch.setattr(config, "LLM_CACHE_DIR", tmp_path)
-    row = {"split": "train", "is_laundering": 1, "pattern_type": "CYCLE",
+    row = {"split": "train", "is_laundering": 1, "pattern_type": "CYCLE", "edge_id": 5,
            "pattern_edge_ids": json.dumps([1, 2, 3])}  # fmt: skip
     kept = make_record(fake_client(good_note()), ALERT, EVIDENCE, row)
     monkeypatch.setattr(config, "LLM_CACHE_DIR", tmp_path / "other")  # new cache
@@ -217,7 +219,7 @@ def test_make_record_keeps_a_good_teacher_note_and_drops_a_bad_one(
 
 def test_report_counts_kept_dropped_and_typologies():
     kept = {"split": "train", "is_laundering": 1, "note": good_note(), "rejected": [],
-            "input_tokens": 10, "output_tokens": 5}  # fmt: skip
+            "input_tokens": 10, "output_tokens": 5, "reused": False}  # fmt: skip
     bad = {**kept, "rejected": ["typology FAN_IN, wanted CYCLE"]}
     report = build_report([kept, bad], {"train": [100, 200]})
     assert report["kept"] == 1 and report["dropped"] == 1
@@ -254,7 +256,11 @@ def test_candidates_hold_no_label_and_split_whole_patterns(
         "HI_FEATURE_CACHE": tmp_path / "features",
     }.items():  # fmt: skip
         monkeypatch.setattr(config, name, value)
-    folder = build_candidates(tmp_path / "candidates", tiny_csv)
+    pool = build_pool(tmp_path / "pool", tiny_csv)
+    dev = tmp_path / "dev"
+    dev.mkdir()
+    pd.read_parquet(pool / "alerts.parquet").head(10).to_parquet(dev / "alerts.parquet")
+    folder = select_candidates(pool, tmp_path / "candidates", dev, tiny_csv)
     alerts = pd.read_parquet(folder / "alerts.parquet")
     truth = pd.read_parquet(folder / "ground_truth.parquet")
     assert not [c for c in alerts.columns if "laundering" in c or "pattern" in c]
@@ -265,7 +271,7 @@ def test_candidates_hold_no_label_and_split_whole_patterns(
     assert (laundering.groupby("attempt_id")["split"].nunique() == 1).all()
 
 
-def test_student_input_is_the_teacher_input_content_written_compactly():
+def test_student_input_is_the_blind_teacher_input_written_compactly():
     student = student_messages(ALERT, EVIDENCE)[1]["content"]
     assert "\n" not in student and ", " not in student
-    assert json.loads(student) == json.loads(build_user_message(ALERT, EVIDENCE))
+    assert json.loads(student) == json.loads(build_blind_user_message(ALERT, EVIDENCE))

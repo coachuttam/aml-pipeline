@@ -6,7 +6,7 @@ test periods are the alerts, so their scores and SHAP reasons look like real,
 unseen ones. Evidence and reason codes come from the existing code. LI-Small is
 never read here.
 
-Output in `data/finetune/candidates/` (git-ignored):
+Output in `data/finetune/candidates/` (git-ignored; the pool is in its pool/ folder):
     alerts.parquet      what the student sees (no label), evidence/<id>.json
     ground_truth.parquet label, pattern type, attempt, split, pattern transaction ids
 
@@ -26,7 +26,7 @@ from src import config
 from src.data import load_dataset
 from src.detect import build_alerts, write_alerts
 from src.features import FEATURE_NAMES, load_or_build
-from src.finetune_select import assign_splits, select_alerts
+from src.finetune_select import assign_splits, select_alerts, top_feature
 from src.ground_truth import (
     ground_truth_table,
     pattern_members,
@@ -57,14 +57,22 @@ def pattern_ids_json(table: pd.DataFrame, members: Dict[int, Set[int]]) -> pd.Se
     )
 
 
-def choose_candidates(alerts: pd.DataFrame, truth: pd.DataFrame) -> pd.DataFrame:
-    """Join, select the mix, split by pattern; one row per chosen alert."""
-    joined = alerts.merge(truth[["alert_id"] + TRUTH_COLUMNS], on="alert_id")
-    return assign_splits(select_alerts(joined))
+def dev_top_feature_mix(dev_folder: Path) -> Dict[str, float]:
+    """Share of the dev alerts (LI-Small validation period) per top-reason feature.
+
+    Only the reasons are read, never a label or the test alerts.
+    """
+    alerts = pd.read_parquet(dev_folder / config.ALERTS_FILE)
+    features = alerts["reasons_json"].map(top_feature)
+    return features.value_counts(normalize=True).to_dict()
 
 
-def build_candidates(folder: Path, raw_csv: Path = config.HI_RAW_CSV) -> Path:
-    """Detector, alerts, evidence and truth for the HI-Small training set."""
+def build_pool(folder: Path, raw_csv: Path = config.HI_RAW_CSV) -> Path:
+    """Detector, then the top FINETUNE_POOL alerts with reasons and truth, saved.
+
+    The pool is saved once (it takes the detector's training time); choosing the
+    candidates from it is quick and can be redone.
+    """
     dataset = load_dataset(raw_csv)
     features = load_or_build(
         dataset.transactions, config.HI_FEATURE_CACHE, raw_csv, False
@@ -78,16 +86,35 @@ def build_candidates(folder: Path, raw_csv: Path = config.HI_RAW_CSV) -> Path:
     )  # fmt: skip
     patterns = read_patterns(config.HI_PATTERNS_FILE)
     truth = ground_truth_table(pool, dataset.transactions, dataset.truth, patterns)
-    chosen = choose_candidates(pool, truth)
-    ids = renumber(chosen)
-    chosen["alert_id"] = chosen["alert_id"].map(ids)
-    chosen["rank"] = range(1, len(chosen) + 1)
     members = pattern_members(patterns, dataset.transactions)
-    truth_out = chosen[["alert_id", "edge_id"] + TRUTH_COLUMNS + ["split"]].copy()
-    truth_out["pattern_edge_ids"] = pattern_ids_json(chosen, members)
-    alerts_out = chosen.drop(columns=TRUTH_COLUMNS + ["split"])
+    truth["pattern_edge_ids"] = pattern_ids_json(truth, members)
+    write_alerts(pool, folder)
+    write_ground_truth(truth, folder)
+    return folder
+
+
+def select_candidates(
+    pool_folder: Path, folder: Path, dev_folder: Path, raw_csv: Path = config.HI_RAW_CSV
+) -> Path:
+    """Choose the candidates from the saved pool, split them, write evidence."""
+    pool = pd.read_parquet(pool_folder / config.ALERTS_FILE)
+    truth = pd.read_parquet(pool_folder / config.GROUND_TRUTH_FILE)
+    extra = truth[["alert_id"] + TRUTH_COLUMNS + ["pattern_edge_ids"]]
+    chosen = assign_splits(
+        select_alerts(pool.merge(extra, on="alert_id"), dev_top_feature_mix(dev_folder))
+    )
+    chosen["old_id"] = chosen["alert_id"]
+    chosen["alert_id"] = chosen["alert_id"].map(renumber(chosen))
+    chosen["rank"] = range(1, len(chosen) + 1)
+    truth_out = chosen[["alert_id", "edge_id"] + TRUTH_COLUMNS]
+    truth_out = truth_out.assign(
+        split=chosen["split"], pattern_edge_ids=chosen["pattern_edge_ids"]
+    )
+    drop = TRUTH_COLUMNS + ["split", "pattern_edge_ids", "old_id"]
+    alerts_out = chosen.drop(columns=drop)
     write_alerts(alerts_out, folder)
     write_ground_truth(truth_out, folder)
+    dataset = load_dataset(raw_csv)
     write_evidence_files(
         alerts_out, dataset, folder / config.EVIDENCE_FOLDER, config.EVIDENCE_STRATEGY
     )

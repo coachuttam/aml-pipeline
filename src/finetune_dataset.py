@@ -15,13 +15,18 @@ from __future__ import annotations
 import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 
 from src import config
-from src.case_note_input import build_user_message, load_prompt, response_format
+from src.case_note_input import (
+    build_blind_user_message,
+    load_prompt,
+    response_format,
+)
+from src.finetune_reuse import can_reuse
 from src.llm_client import request_note
 from src.teacher import (
     build_teacher_message,
@@ -40,13 +45,17 @@ def compact_json(text: str) -> str:
 def student_messages(alert: Dict, evidence: Dict) -> List[Dict]:
     """System and user message of the student: no label, no pattern, no truth.
 
-    The user message holds exactly the content V1 and the teacher get, only written
-    without indentation: with Qwen's one-token-per-digit numbers the indented form
-    is 8.8k tokens on average, over the 8,192 limit for 96% of the examples.
+    The user message holds exactly the content prompt v4 and the teacher get (no
+    model score, no push sizes), only written without indentation: with Qwen's
+    one-token-per-digit numbers the indented form needs about 8.8k tokens on
+    average, over the 8,192 limit for 96% of the examples.
     """
     return [
         {"role": "system", "content": load_prompt(config.STUDENT_PROMPT_VERSION)},
-        {"role": "user", "content": compact_json(build_user_message(alert, evidence))},
+        {
+            "role": "user",
+            "content": compact_json(build_blind_user_message(alert, evidence)),
+        },
     ]
 
 
@@ -63,14 +72,23 @@ def chat_example(messages: List[Dict], note: Dict) -> Dict:
     }
 
 
-def make_record(client: Any, alert: Dict, evidence: Dict, row: Dict) -> Dict:
-    """Ask the teacher for one alert; keep the note and why it was rejected, if so."""
+def make_record(
+    client: Any,
+    alert: Dict,
+    evidence: Dict,
+    row: Dict,
+    old_notes: Optional[Dict[int, Dict]] = None,
+) -> Dict:
+    """One alert's record: an earlier note if it still fits, else ask the teacher."""
     truth = privileged_truth(row, evidence)
-    student = build_user_message(alert, evidence)
-    result = request_note(
-        client, build_teacher_message(student, truth), config.TEACHER_PROMPT_VERSION
-    )
-    note = parse_teacher_note(result["content"])
+    note, usage = reuse_note(old_notes, row, evidence, truth), (0, 0)
+    if note is None:
+        student = build_blind_user_message(alert, evidence)
+        result = request_note(
+            client, build_teacher_message(student, truth), config.TEACHER_PROMPT_VERSION
+        )
+        note = parse_teacher_note(result["content"])
+        usage = (result["input_tokens"], result["output_tokens"])
     return {
         "alert_id": alert["alert_id"],
         "split": row["split"],
@@ -80,9 +98,20 @@ def make_record(client: Any, alert: Dict, evidence: Dict, row: Dict) -> Dict:
         "pattern_visible": is_pattern_visible(truth),
         "note": note,
         "rejected": rejection_reasons(note, evidence, truth),
-        "input_tokens": result["input_tokens"],
-        "output_tokens": result["output_tokens"],
+        "reused": usage == (0, 0),
+        "input_tokens": usage[0],
+        "output_tokens": usage[1],
     }
+
+
+def reuse_note(
+    old_notes: Optional[Dict[int, Dict]], row: Dict, evidence: Dict, truth: Dict
+) -> Optional[Dict]:
+    """The earlier note for this transaction if it passes every check again."""
+    note = (old_notes or {}).get(int(row["edge_id"]))
+    if note is None or not can_reuse(note):
+        return None
+    return note if not rejection_reasons(note, evidence, truth) else None
 
 
 def load_evidence(folder: Path, alert_id: str) -> Dict:
@@ -91,7 +120,12 @@ def load_evidence(folder: Path, alert_id: str) -> Dict:
     return json.loads(path.read_text())
 
 
-def generate_records(client: Any, folder: Path, chosen: pd.DataFrame) -> List[Dict]:
+def generate_records(
+    client: Any,
+    folder: Path,
+    chosen: pd.DataFrame,
+    old_notes: Optional[Dict[int, Dict]] = None,
+) -> List[Dict]:
     """Teacher records for the chosen alerts, several API calls at once."""
     alerts = pd.read_parquet(folder / config.ALERTS_FILE).set_index("alert_id")
     truth = chosen.set_index("alert_id")
@@ -99,7 +133,9 @@ def generate_records(client: Any, folder: Path, chosen: pd.DataFrame) -> List[Di
     def one(alert_id: str) -> Dict:
         alert = {**alerts.loc[alert_id].to_dict(), "alert_id": alert_id}
         row = truth.loc[alert_id].to_dict()
-        return make_record(client, alert, load_evidence(folder, alert_id), row)
+        return make_record(
+            client, alert, load_evidence(folder, alert_id), row, old_notes
+        )
 
     with ThreadPoolExecutor(config.TEACHER_WORKERS) as pool:
         return list(pool.map(one, list(chosen["alert_id"])))

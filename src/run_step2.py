@@ -16,7 +16,7 @@ from typing import Dict, Optional
 import pandas as pd
 
 from src import config
-from src.case_note_input import build_user_message, evidence_transactions
+from src.case_note_input import evidence_transactions, user_message_for
 from src.evaluate_step2 import evaluate_notes
 from src.fact_check import check_note, count_claims
 from src.llm_client import make_client, request_note
@@ -36,7 +36,7 @@ def parse_note(content: str, evidence: Dict) -> Optional[Dict]:
 
 def note_for_alert(client, alert: Dict, evidence: Dict, version: str) -> Dict:
     """One alert -> note, violations, review flag, usage (one retry on bad JSON)."""
-    message = build_user_message(alert, evidence)
+    message = user_message_for(version, alert, evidence)
     result = request_note(client, message, version)
     note = parse_note(result["content"], evidence)
     if note is None:

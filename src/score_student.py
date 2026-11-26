@@ -32,7 +32,7 @@ NOTES_NAME = "notes_student.json"
 
 def student_record(alert: Dict, evidence: Dict, raw: Dict) -> Dict:
     """One scored record, like run_step2's: note (or None), violations, tokens."""
-    note = parse_teacher_note(raw["text"])
+    note = None if raw.get("truncated") else parse_teacher_note(raw["text"])
     violations: List[str] = []
     if note is not None:
         try:

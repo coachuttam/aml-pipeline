@@ -114,6 +114,18 @@ def display_reasons(alert: Dict) -> List[Dict]:
     return shown
 
 
+def blind_reasons(alert: Dict) -> List[str]:
+    """The reasons as plain sentences without the size of any push (strongest first).
+
+    The sizes (and the model score) differ between detectors, so a student that sees
+    them learns the detector instead of the transactions.
+    """
+    return [
+        reason_text(r["feature"], r["value"], alert) + "."
+        for r in json.loads(alert["reasons_json"])
+    ]
+
+
 def plain_reasons(alert: Dict) -> List[str]:
     """The alert's top reasons, in order, as sentences."""
     return [

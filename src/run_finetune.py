@@ -1,15 +1,17 @@
 """V2 step 1: the fine-tuning dataset for the case-note model.
 
-    python -m src.run_finetune candidates         # HI-Small alerts + evidence (slow)
-    python -m src.run_finetune dev                # 50 LI-Small validation alerts
-    python -m src.run_finetune generate --count 20   # teacher notes for a small batch
-    python -m src.run_finetune generate              # ... for every candidate
-    python -m src.run_finetune rebalance          # train: all typed, unclear to 40%
-    python -m src.run_finetune inputs             # the 200 test alerts, inputs only
+    python -m src.run_finetune pool       # HI-Small detector, top 60,000 (slow)
+    python -m src.run_finetune select     # candidates from the pool, with evidence
+    python -m src.run_finetune dev        # 50 LI-Small validation alerts (retrains)
+    python -m src.run_finetune generate [--count 20]   # teacher notes (reuses old)
+    python -m src.run_finetune rebalance  # train: all typed, unclear to 40%
+    python -m src.run_finetune inputs     # dev and test inputs, no note, no truth
+    python -m src.run_finetune cues       # cue distributions, train vs dev vs test
 
 Output goes to data/finetune/ (git-ignored): train.jsonl, validation.jsonl (chat
-format), meta.jsonl (truth per example, for analysis only), report.json, and
-dev_inputs.jsonl (inputs only). A batch with --count goes to data/finetune/sample/.
+format), meta.jsonl (truth per example, for analysis only), report.json,
+cue_report.json, dev_inputs.jsonl and test_inputs.jsonl (inputs only). A batch with
+--count goes to data/finetune/sample/.
 """
 
 from __future__ import annotations
@@ -22,7 +24,8 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 from src import config
-from src.finetune_alerts import build_candidates
+from src.finetune_alerts import build_pool, select_candidates
+from src.finetune_cues import build_cue_report
 from src.finetune_dataset import (
     example_for,
     generate_records,
@@ -31,9 +34,12 @@ from src.finetune_dataset import (
 )
 from src.finetune_rebalance import rebalance_files
 from src.finetune_report import build_report
+from src.finetune_reuse import load_old_notes
 from src.finetune_select import pick_sample
 from src.llm_client import make_client
 from src.run_dev import build_dev_set
+
+STEPS = ["pool", "select", "dev", "generate", "rebalance", "inputs", "cues"]
 
 
 def write_jsonl(path: Path, items: List[Dict]) -> None:
@@ -77,40 +83,45 @@ def write_dev_inputs(dev_folder: Path, output: Path) -> int:
 
 def generate(count: Optional[int]) -> Dict:
     """Teacher notes for `count` candidates (all when None), then the files."""
-    candidates = config.FINETUNE_DIR / config.FINETUNE_CANDIDATES_FOLDER
+    data = config.FINETUNE_DIR
+    candidates = data / config.FINETUNE_CANDIDATES_FOLDER
     chosen = pd.read_parquet(candidates / config.GROUND_TRUTH_FILE)
     if count:
-        chosen = pick_sample(
-            chosen.merge(pd.read_parquet(candidates / config.ALERTS_FILE)[
-                ["alert_id", "score"]], on="alert_id"), count)  # fmt: skip
-    records = generate_records(make_client(), candidates, chosen)
-    folder = config.FINETUNE_DIR / ("sample" if count else "")
+        scores = pd.read_parquet(candidates / config.ALERTS_FILE)[["alert_id", "score"]]
+        chosen = pick_sample(chosen.merge(scores, on="alert_id"), count)
+    old_notes = load_old_notes(data / "old_v1", data / "candidates_v1")
+    records = generate_records(make_client(), candidates, chosen, old_notes)
+    folder = data / ("sample" if count else "")
     return write_dataset(folder, candidates, records)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument(
-        "step", choices=["candidates", "dev", "generate", "rebalance", "inputs"]
-    )
+    parser.add_argument("step", choices=STEPS)
     parser.add_argument("--count", type=int, default=None)
     arguments = parser.parse_args()
-    if arguments.step == "candidates":
-        build_candidates(config.FINETUNE_DIR / config.FINETUNE_CANDIDATES_FOLDER)
+    data = config.FINETUNE_DIR
+    dev_folder = config.ARTIFACTS_DIR / config.FINETUNE_DEV_FOLDER
+    candidates = data / config.FINETUNE_CANDIDATES_FOLDER
+    if arguments.step == "pool":
+        build_pool(candidates / "pool")
+    elif arguments.step == "select":
+        select_candidates(candidates / "pool", candidates, dev_folder)
     elif arguments.step == "dev":
-        folder = build_dev_set(
+        build_dev_set(
             config.ARTIFACTS_DIR, config.RAW_CSV, config.FINETUNE_DEV_ALERTS,
             config.FINETUNE_DEV_FOLDER,
         )  # fmt: skip
-        count = write_dev_inputs(folder, config.FINETUNE_DIR / "dev_inputs.jsonl")
-        print("dev inputs:", count)
     elif arguments.step == "rebalance":
-        print(json.dumps(rebalance_files(config.FINETUNE_DIR), indent=1))
+        print(json.dumps(rebalance_files(data), indent=1))
     elif arguments.step == "inputs":
-        count = write_dev_inputs(
-            config.ARTIFACTS_DIR, config.FINETUNE_DIR / config.FINETUNE_TEST_INPUTS
-        )
-        print("test inputs:", count)
+        print("dev inputs:", write_dev_inputs(dev_folder, data / "dev_inputs.jsonl"))
+        test_file = data / config.FINETUNE_TEST_INPUTS
+        print("test inputs:", write_dev_inputs(config.ARTIFACTS_DIR, test_file))
+    elif arguments.step == "cues":
+        report = build_cue_report()
+        (data / "cue_report.json").write_text(json.dumps(report, indent=1) + "\n")
+        print(json.dumps(report, indent=1))
     else:
         print(json.dumps(generate(arguments.count), indent=1))
 
