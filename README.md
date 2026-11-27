@@ -451,4 +451,4 @@ Step 1 kept only the 200 alerts' LightGBM scores, so this run re-fitted the froz
 
 ## Licence
 
-MIT. Copyright (c) 2026 Uttam Kumar; see [LICENSE](LICENSE).
+Copyright (c) 2026 Uttam Kumar. All rights reserved. Shared for viewing and evaluation only; see [LICENSE](LICENSE). Contact the author for any reuse.
