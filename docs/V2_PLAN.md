@@ -50,6 +50,14 @@ The draft builder would choose a jurisdiction (`config.STR_JURISDICTION = "UAE" 
 
 ## 3. Offline GGUF / Ollama demo
 
-- **What:** merge the `typology2` LoRA into Qwen2.5-7B-Instruct, convert it to GGUF (llama.cpp) at Q4_K_M, and serve it with Ollama (a `Modelfile` carrying the v4 system prompt and temperature 0). Add `NOTE_WRITER = "ollama"` so the UI can regenerate a note offline on a laptop.
-- **Check before use:** quantisation can change answers. Re-run **dev** (not test) with the GGUF model and compare it with the adapter's dev answers: JSON validity, typology agreement and the fact check. Test stays the single scored run of the adapter.
-- **Limits to state:** a 7B Q4 model needs about 5 GB of RAM and takes seconds per note on a CPU. The model files stay out of git.
+**Built, not yet run.** The pieces:
+- `notebooks/gguf_ollama_colab.ipynb`: merge the adapter, convert to GGUF, quantise to Q4_K_M; only the GGUF goes to Drive.
+- `ollama/Modelfile`, `src/ollama_generate.py`, and `NOTE_WRITER="ollama"` in the UI and in `src/note_writer`.
+- `src/quant_check.py`: the dev-only check, with pass rules in `config.QUANT_*`.
+- `docs/OFFLINE_DEMO.md`: the Mac steps.
+
+Still to do:
+1. Run the notebook.
+2. Run the dev check.
+3. Time one note on the Mac (8 GB M2).
+4. Record the numbers in the README.

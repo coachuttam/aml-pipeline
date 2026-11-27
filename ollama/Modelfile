@@ -1,0 +1,25 @@
+# The typology2 student (Qwen2.5-7B-Instruct + LoRA, merged, GGUF Q4_K_M) for Ollama.
+# Create it from the repo root:  ollama create aml-student-typology2 -f ollama/Modelfile
+# FROM is relative to this file, so the GGUF must be in models/ while creating; Ollama
+# copies it into its own store, after which the download can be deleted.
+FROM ../models/aml-student-typology2-Q4_K_M.gguf
+
+# Qwen2.5's ChatML, exactly what the student was trained on: the caller always sends the
+# v4 system prompt and the evidence (src/finetune_dataset.student_messages), so no
+# default system prompt is added here.
+TEMPLATE """{{- range .Messages }}<|im_start|>{{ .Role }}
+{{ .Content }}<|im_end|>
+{{ end }}<|im_start|>assistant
+"""
+
+# Greedy, as student_generate.py (do_sample=False). Ollama's default repeat_penalty is
+# 1.1, so it is set to 1.0 here; 1.1 is used only for the one retry of an invalid answer.
+PARAMETER temperature 0
+PARAMETER top_k 1
+PARAMETER repeat_penalty 1.0
+PARAMETER seed 0
+# Training kept examples up to 8,192 tokens (prompt + note); dev prompts are <= 6,500.
+PARAMETER num_ctx 8192
+PARAMETER num_predict 1400
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|endoftext|>"

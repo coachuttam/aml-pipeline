@@ -7,6 +7,14 @@ Three steps, the middle one on a GPU (Colab L4 or similar), the others on a CPU:
         --out data/finetune/new_raw.jsonl          # GPU; adapter from config
     python -m src.note_writer notes    --raw data/finetune/new_raw.jsonl
 
+Offline (no GPU, no internet): the same student, merged and quantised to a Q4_K_M
+GGUF, served by a local Ollama (ollama/Modelfile, docs/OFFLINE_DEMO.md):
+
+    python -m src.note_writer ollama --alert A0001   # one alert, end to end, timed
+
+The answer goes through the same parsing and fact check (student_record). Ollama
+answers are demo output in data/finetune/ollama_demo_raw.jsonl and are never scored.
+
 `notes` parses and fact-checks each answer against its own evidence and writes
 artifacts/notes_student.json, the file the UI reads when NOTE_WRITER is "student"
 (the default; "prompt_v3" switches back to V1). It reads no ground truth. The
@@ -62,6 +70,45 @@ def write_notes(folder: Path, raw_path: Path) -> Dict:
     return {"alerts": len(records), "needs_review": needing_review}
 
 
+def ollama_record(alert: Dict, evidence: Dict) -> Dict:
+    """One alert's note from the local Ollama model, fact-checked like any other."""
+    from src.finetune_dataset import student_messages
+    from src.ollama_generate import write_note
+
+    item = {
+        "alert_id": alert["alert_id"],
+        "messages": student_messages(alert, evidence),
+    }
+    line = write_note(item, config.OLLAMA_MODEL, config.OLLAMA_HOST_URL)
+    record = student_record(alert, evidence, line)
+    record["seconds"] = line["seconds"]
+    record["note_version"] = config.OLLAMA_NOTE_VERSION
+    return record
+
+
+def run_ollama_alert(folder: Path, alert_id: str) -> Dict:
+    """`ollama --alert`: write, check and time one note; keep the raw answer."""
+    alerts = pd.read_parquet(folder / config.ALERTS_FILE)
+    alert = alerts[alerts["alert_id"] == alert_id].iloc[0].to_dict()
+    name = "%s.json" % alert_id
+    evidence = json.loads((folder / config.EVIDENCE_FOLDER / name).read_text())
+    record = ollama_record(alert, evidence)
+    raw = config.FINETUNE_DIR / config.OLLAMA_DEMO_RAW
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    with raw.open("a") as handle:
+        handle.write(json.dumps({"alert_id": alert_id, "note": record["note"],
+                                 "seconds": record["seconds"]}) + "\n")  # fmt: skip
+    return record
+
+
+def print_ollama_result(record: Dict) -> None:
+    """The record, then one summary line: time, tokens, fact check."""
+    print(json.dumps(record, indent=1))
+    check = record["violations"] if record["needs_review"] else "clean"
+    values = (record["alert_id"], record["seconds"], record["output_tokens"], check)
+    print("%s: %.0f s, %d output tokens, fact check: %s" % values)
+
+
 def generate_command(inputs: Path, output: Path) -> list:
     """The GPU command: student_generate.py with the frozen adapter."""
     adapter = str(config.STUDENT_ADAPTER_DIR)
@@ -73,7 +120,8 @@ def main() -> None:
     from src.run_finetune import write_dev_inputs
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("step", choices=["inputs", "generate", "notes"])
+    parser.add_argument("step", choices=["inputs", "generate", "notes", "ollama"])
+    parser.add_argument("--alert", help="ollama: the one alert to write a note for")
     parser.add_argument("--folder", type=Path, default=config.ARTIFACTS_DIR)
     parser.add_argument("--inputs", type=Path)
     parser.add_argument("--raw", type=Path)
@@ -85,6 +133,8 @@ def main() -> None:
         if not config.STUDENT_ADAPTER_DIR.exists():
             raise SystemExit("No adapter at %s" % config.STUDENT_ADAPTER_DIR)
         subprocess.run(generate_command(arguments.inputs, arguments.out), check=True)
+    elif arguments.step == "ollama":
+        print_ollama_result(run_ollama_alert(arguments.folder, arguments.alert))
     else:
         print(write_notes(arguments.folder, arguments.raw))
 

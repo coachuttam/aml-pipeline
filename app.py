@@ -137,28 +137,34 @@ def show_note(bundle: dict) -> None:
     )
 
 
-def regenerate_button(alert_id: str, bundle: dict) -> None:
-    """Optional live call (V1 writer only); the saved note stays if it fails."""
-    if config.NOTE_WRITER != "prompt_v3":
-        st.caption(
-            "Notes by the fine-tuned student (typology2); regenerating needs a "
-            "GPU: python -m src.note_writer generate."
-        )
-        return
-    if not st.button("Regenerate note (calls OpenAI)"):
-        return
+def new_note(bundle: dict) -> dict:
+    """A fresh note: local Ollama (offline demo) or OpenAI (V1 prompt v3)."""
+    if config.NOTE_WRITER == "ollama":
+        from src.note_writer import ollama_record
+
+        return ollama_record(bundle["alert"], bundle["evidence"])
     from src.llm_client import make_client
     from src.run_step2 import note_for_alert
 
-    try:
-        client = make_client()
-        record = note_for_alert(
-            client,
-            bundle["alert"],
-            bundle["evidence"],
-            config.REGENERATE_PROMPT_VERSION,
+    return note_for_alert(make_client(), bundle["alert"], bundle["evidence"],
+                          config.REGENERATE_PROMPT_VERSION)  # fmt: skip
+
+
+def regenerate_button(alert_id: str, bundle: dict) -> None:
+    """Optional live call (Ollama or OpenAI); the saved note stays if it fails."""
+    if config.NOTE_WRITER == "student":
+        st.caption(
+            "Notes by the fine-tuned student (typology2). Offline regenerating: "
+            "AML_PIPELINE_NOTE_WRITER=ollama (docs/OFFLINE_DEMO.md)."
         )
-    except Exception as error:  # no key or no network: say so, keep the saved note
+        return
+    where = "local Ollama, offline" if config.NOTE_WRITER == "ollama" else "OpenAI"
+    if not st.button("Regenerate note (%s)" % where):
+        return
+    try:
+        with st.spinner("Writing the note (a few minutes on a laptop)..."):
+            record = new_note(bundle)
+    except Exception as error:  # no server, key or network: say so, keep the note
         st.error("Could not regenerate: %s" % error)
         return
     st.session_state.setdefault("regenerated", {})[alert_id] = record

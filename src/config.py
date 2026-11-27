@@ -243,6 +243,8 @@ STUDENT_NOTES_FILE = "notes_student.json"  # in artifacts/, fact-checked student
 NOTE_WRITERS = {
     "student": (STUDENT_NOTES_FILE, "v2-student-typology2"),
     "prompt_v3": ("notes_step2_v3.json", "v3"),
+    # Offline demo: the saved notes stay the adapter's; "Regenerate" asks Ollama.
+    "ollama": (STUDENT_NOTES_FILE, "v2-student-typology2"),
 }  # writer -> (notes file in artifacts/, version recorded in the audit log)
 NOTE_WRITER = os.environ.get("AML_PIPELINE_NOTE_WRITER", "student")  # V2 default
 UI_NOTES_FILE, UI_NOTE_VERSION = NOTE_WRITERS[NOTE_WRITER]  # what the UI shows
@@ -275,3 +277,14 @@ AED_PER_USD = 3.6725  # UAE dirham peg to the US dollar (fixed since 1997)
 PEGGED_CURRENCY = "USD"  # only this currency's AED amount is filled; others MISSING
 GOAML_PARTY_ROLES = {"FAN_IN": "from_account", "FAN_OUT": "to_account"}  # by typology
 AUDIT_ARCHIVE_FOLDER = "audit_log_archive"  # in artifacts/: cleared demo logs go here
+
+# V2 step 3: offline demo, the student as a Q4_K_M GGUF served by a local Ollama.
+OLLAMA_MODEL = "aml-student-typology2"  # the name `ollama create` gives the model
+OLLAMA_HOST_URL = os.environ.get("OLLAMA_HOST_URL", "http://localhost:11434")
+OLLAMA_GGUF = "aml-student-typology2-Q4_K_M.gguf"  # Colab writes it to Drive
+OLLAMA_NOTE_VERSION = "v2-student-typology2-q4km"  # audit log: a regenerated note
+OLLAMA_DEMO_RAW = "ollama_demo_raw.jsonl"  # data/finetune/: demo answers, never scored
+# Quantisation check on dev (50 alerts), fixed before the GGUF answers are seen.
+QUANT_MAX_JSON_DROP = 2  # at most 2 fewer valid answers than the adapter, of 50
+QUANT_MAX_INVENTED_RATIO = 2.0  # invented facts per claim at most twice the adapter's
+QUANT_MIN_TYPOLOGY_AGREEMENT = 0.8  # same typology on >= 80% of alerts valid in both

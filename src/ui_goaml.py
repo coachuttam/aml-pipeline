@@ -51,7 +51,8 @@ def decision_form(alert_id: str, bundle: dict, show_status) -> None:
         % typology, key="t" + alert_id,
     )  # fmt: skip
     if st.button("Save decision", key="s" + alert_id):
-        record_decision(alert_id, decision, comment, config.UI_NOTE_VERSION,
+        version = (bundle["record"] or {}).get("note_version", config.UI_NOTE_VERSION)
+        record_decision(alert_id, decision, comment, version,
                         typology_confirmed=typology if confirmed else "")  # fmt: skip
         st.success("Saved %s for %s." % (decision, alert_id))
     saved = latest_decisions().get(alert_id)
