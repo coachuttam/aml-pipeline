@@ -32,12 +32,15 @@ LightGBM sets the priority. The GNN is shown beside it as a second opinion, and 
 | Says "unclear" on false alarms (147) | 0/147 | **136/147 (93%)** |
 | Invented facts per checked claim | 20/7,403 (2.7 per 1,000) | **6/6,351 (0.9 per 1,000)** |
 | Valid JSON notes | 200/200 | 200/200 |
-| Where it runs | Cloud API, about 6.5 s per note | **Laptop, no internet**: 292 s per note on an 8 GB M2 (Q4_K_M GGUF) |
+| Time per note | Cloud API: 6.5 s | Bank GPU (L4): 11-31 s · 8 GB laptop, offline (Q4_K_M GGUF): 292 s |
 
-| Detector, minority-class F1 on the LI-Small test period | F1 |
+| Detector, minority-class F1 (test) | F1 |
 | --- | --- |
-| LightGBM (priority) | 0.216 |
-| GNN, PNA fine-tuned (second opinion, Project 4) | **0.367** |
+| LightGBM on LI-Small (this pipeline's priority) | 0.216 |
+| GNN, PNA fine-tuned, on LI-Small (second opinion, Project 4) | **0.367** |
+| LightGBM on HI-Small (Project 2, for reference) | 0.510 |
+
+LI-Small is harder than HI-Small: it has far fewer laundering transactions per normal one, so the two LightGBM numbers are not a like-for-like comparison.
 
 - **Agreement:** the GNN calls 136 of the 200 alerts low. The UI flags each of these disagreements.
 - **Offline model check:** the quantised offline model passed its dev check (50/50 valid JSON, 0/1,189 invented facts, same typology as the full model on 40/50). The test numbers above are the full model's.
@@ -46,9 +49,9 @@ LightGBM sets the priority. The GNN is shown beside it as a second opinion, and 
 
 | Project | Contribution |
 | --- | --- |
-| 1. LLM case notes | The prompted case-note approach, rebuilt here as the V1 baseline (`gpt-4.1-mini`) |
-| 2. LightGBM and features | Transaction features, metric definitions, the explainable detector with SHAP reasons |
-| 3. Fine-tuned case-note student | Qwen2.5-7B LoRA trained on teacher notes from HI-Small; the V2 note writer, offline as a GGUF |
+| 1. aml-alert-investigator | Qwen2.5-1.5B QLoRA on synthetic alerts that gives a typology, risk and reason, inside a 6-step workflow with an audit log (macro-F1 1.000 test, 0.936 held-out). It is the origin of the analyst workflow and the audit log. |
+| 2. aml-ibm-experiment | LightGBM ranking on IBM HI-Small against rules. It gets 28.3% recall with 715 alerts, where the rules raise 167,778 (F1 0.510). It adds SHAP reasons and template case notes, the basis of the detector, the reason codes and the V1 note. |
+| 3. Fine-tuned case-note student | The first attempt (aml-ibm-finetune) got the typology right 12.0% of the time, against 36.1% for simple graph checks. That led to the reshaped, evidence-only student here: Qwen2.5-7B LoRA trained on teacher notes from HI-Small, the V2 note writer, offline as a GGUF. |
 | 4. GNN transfer ([aml-gnn-transfer](../aml-gnn-transfer)) | The LightGBM baseline config and the fine-tuned PNA graph model behind the second opinion |
 
 ## Honest limits
