@@ -2,8 +2,9 @@
 
 Hovering an edge shows the transaction's amount, currency, time and GNN score.
 Two colourings: by note citations (the alert red, cited orange, the rest grey) or by
-GNN score (light to dark, thicker from the validation threshold up, grey dashed
-where there is no score; the alert keeps a red outline), with a legend.
+GNN score (dim grey to yellow to red, thicker from the validation threshold up, grey
+dashed where there is no score; the alert has a cyan outline), with a legend. Only
+the alert's, the cited and the key accounts are labelled; the rest on hover.
 
 Example:
     edges = graph_edges(evidence, cited=[5, 7], gnn={5: 0.91})
@@ -20,7 +21,9 @@ from src.totals import currency_code
 
 HOVER_POINTS_PER_EDGE = 3  # invisible points along an edge so hovering is easy
 CITATIONS, GNN = "note citations", "GNN score"  # the two edge colourings
-ALERT_OUTLINE_EXTRA = 4  # the alert's red outline is this much wider than its line
+ALERT_OUTLINE_EXTRA = (
+    4  # the alert's outline (GNN mode) is this much wider than its line
+)
 
 
 class Edge(NamedTuple):
@@ -84,11 +87,21 @@ def blend(low: str, high: str, share: float) -> str:
     return "#" + "".join("%02x" % round(x + (y - x) * share) for x, y in zip(a, b))
 
 
+def gnn_colour(score: float) -> str:
+    """A GNN score's colour on the GNN_COLOUR_STOPS scale (grey, yellow, red)."""
+    stops = config.GNN_COLOUR_STOPS
+    score = min(max(score, 0.0), 1.0)
+    for (start, low), (end, high) in zip(stops, stops[1:]):
+        if score <= end:
+            return blend(low, high, (score - start) / (end - start))
+    return stops[-1][1]
+
+
 def gnn_style(edge: Edge) -> Tuple[str, int, str]:
     """Colour, width and dash of an edge coloured by GNN score."""
     if edge.gnn_score is None:
         return config.UNSCORED_EDGE_COLOUR, config.GNN_EDGE_WIDTH, "dash"
-    colour = blend(config.GNN_LOW_COLOUR, config.GNN_HIGH_COLOUR, edge.gnn_score)
+    colour = gnn_colour(edge.gnn_score)
     high = edge.gnn_score >= config.GNN_HIGH_THRESHOLD
     width = config.GNN_HIGH_EDGE_WIDTH if high else config.GNN_EDGE_WIDTH
     return colour, width, "solid"
@@ -138,9 +151,9 @@ def edge_traces(
     traces = []
     for edge in sorted(edges, key=lambda e: (e.is_alert, e.is_cited)):
         style = edge_style(edge, colour_by)
-        if colour_by == GNN and edge.is_alert:  # red outline under its GNN colour
+        if colour_by == GNN and edge.is_alert:  # outline under its GNN colour
             outline = (
-                config.ALERT_EDGE_COLOUR,
+                config.GNN_ALERT_OUTLINE_COLOUR,
                 style[1] + ALERT_OUTLINE_EXTRA,
                 "solid",
             )
@@ -164,7 +177,7 @@ def gnn_legend() -> List[Any]:
     threshold = config.GNN_HIGH_THRESHOLD
     bar = go.Scatter(
         x=[None], y=[None], mode="markers", showlegend=False, hoverinfo="skip",
-        marker={"colorscale": [[0, config.GNN_LOW_COLOUR], [1, config.GNN_HIGH_COLOUR]],
+        marker={"colorscale": [list(stop) for stop in config.GNN_COLOUR_STOPS],
                 "cmin": 0, "cmax": 1, "color": [0], "showscale": True,
                 "colorbar": {"title": {"text": "GNN laundering score", "side": "right"},
                              "tickvals": [0, threshold, 1],
@@ -172,12 +185,23 @@ def gnn_legend() -> List[Any]:
                                           % threshold, "1"],
                              "thickness": 12, "len": 0.8}},
     )  # fmt: skip
-    return [bar, legend_line("alert transaction (outline)", config.ALERT_EDGE_COLOUR),
+    alert = legend_line("alert transaction (outline)", config.GNN_ALERT_OUTLINE_COLOUR)
+    return [bar, alert,
             legend_line("not scored: GNN training period",
                         config.UNSCORED_EDGE_COLOUR, "dash")]  # fmt: skip
 
 
-def node_trace(positions: Dict[str, Any]) -> Any:
+def labelled_accounts(edges: List[Edge], key_accounts: List[str] = ()) -> Set[str]:
+    """Accounts that get a visible label: the alert's, the cited ones, key accounts."""
+    shown = set(key_accounts)
+    for edge in edges:
+        if edge.is_alert or edge.is_cited:
+            shown |= {edge.sender, edge.receiver}
+    return shown
+
+
+def node_trace(positions: Dict[str, Any], labelled: Set[str]) -> Any:
+    """Account dots; only `labelled` ones carry a label, every one shows on hover."""
     import plotly.graph_objects as go
 
     names = list(positions)
@@ -185,9 +209,9 @@ def node_trace(positions: Dict[str, Any]) -> Any:
         x=[positions[n][0] for n in names],
         y=[positions[n][1] for n in names],
         mode="markers+text",
-        text=names,
+        text=[n if n in labelled else "" for n in names],
         textposition="top center",
-        textfont={"size": 9},
+        textfont={"size": 10},
         marker={"size": 9, "color": config.NODE_COLOUR},
         hoverinfo="text",
         hovertext=names,
@@ -202,12 +226,20 @@ def padded_range(values: List[float]) -> List[float]:
     return [low - pad, high + pad]
 
 
-def build_figure(edges: List[Edge], colour_by: str = CITATIONS) -> Any:
-    """The interactive figure: edges first, account labels on top, GNN legend."""
+def build_figure(
+    edges: List[Edge], colour_by: str = CITATIONS, key_accounts: List[str] = ()
+) -> Any:
+    """The interactive figure: edges first, account labels on top, GNN legend.
+
+    Only the alert's accounts, accounts of cited transactions and the note's key
+    accounts are labelled; the others show their name on hover.
+    """
     import plotly.graph_objects as go
 
     positions = layout(edges)
-    traces = edge_traces(edges, positions, colour_by) + [node_trace(positions)]
+    labelled = labelled_accounts(edges, key_accounts)
+    traces = edge_traces(edges, positions, colour_by)
+    traces.append(node_trace(positions, labelled))
     if colour_by == GNN:
         traces += gnn_legend()
     figure = go.Figure(traces)

@@ -10,19 +10,32 @@ import pytest
 
 from src import config
 from src.gnn_scores import (
+    AGREE,
+    DISAGREE,
     HIGH,
     LOW,
+    NOT_AVAILABLE,
     NOT_SCORED,
+    agreement,
     band,
     coverage_problems,
     coverage_report,
     evidence_scores,
+    higher_than_percent,
     load_gnn_scores,
+    percent_text,
     second_opinion_text,
-    top_percent,
 )
 from src.ui_data import load_bundle, load_queue
-from src.ui_graph import CITATIONS, GNN, blend, build_figure, edge_style, graph_edges
+from src.ui_graph import (
+    CITATIONS,
+    GNN,
+    build_figure,
+    edge_style,
+    gnn_colour,
+    graph_edges,
+    labelled_accounts,
+)
 
 
 def txn(transaction_id: int, time: str, sender: str, receiver: str) -> dict:
@@ -50,6 +63,7 @@ def folder(tmp_path: Path) -> Path:
     scores.to_parquet(tmp_path / config.GNN_SCORES_FILE)
     reasons = [{"feature": "sender_sent_7d", "value": 5.0, "shap": 2.0}]
     pd.DataFrame([{"alert_id": "A0001", "rank": 1, "edge_id": 1, "score": 0.99,
+                   "above_threshold": True,
                    "payment_format": "ACH", "payment_currency": "US Dollar",
                    "reasons_json": json.dumps(reasons)}]).to_parquet(
         tmp_path / config.ALERTS_FILE)  # fmt: skip
@@ -69,12 +83,36 @@ def test_bands_use_the_threshold_chosen_on_validation():
     assert band(None) == NOT_SCORED
 
 
-def test_the_header_gives_score_band_and_share_of_test_scored_as_high(folder):
+def test_the_header_says_what_share_of_test_transactions_score_lower(folder):
     gnn = load_gnn_scores(folder)
-    assert top_percent(gnn, 0.9) == 50.0  # 0.9 and 0.95 of four test scores
+    assert higher_than_percent(gnn, 0.9) == 50.0  # above 0.1 and 0.5 of four
+    assert higher_than_percent(gnn, 0.0) == 0.0
     text = second_opinion_text(gnn, 1)
-    assert text == "GNN second opinion: 0.90, high (top 50.0% of test)"
-    assert top_percent(gnn, 2.0) == 0.0  # above every test score
+    assert text == ("GNN second opinion: 0.90, high "
+                    "(higher than 50.0% of test transactions)")  # fmt: skip
+
+
+def test_percentages_near_the_top_keep_their_decimals():
+    assert percent_text(28.57) == "28.6" and percent_text(99.954) == "99.95"
+    assert percent_text(99.999) == ">99.99"
+
+
+def test_the_models_disagree_when_one_is_high_and_the_other_low():
+    assert agreement(True, 0.0) == DISAGREE and agreement(True, 0.9) == AGREE
+    assert agreement(False, 0.1) == AGREE and agreement(False, 0.9) == DISAGREE
+    assert agreement(True, None) == NOT_AVAILABLE
+
+
+def test_a_disagreeing_alert_gets_a_badge_and_the_queue_a_column(folder):
+    gnn = load_gnn_scores(folder)
+    assert load_bundle(folder, "A0001", gnn)["disagreement"] is None  # 0.99 vs 0.9
+    scores = pd.read_parquet(folder / config.GNN_SCORES_FILE)
+    scores.loc[scores["transaction_id"] == 1, "score"] = 0.0
+    scores.to_parquet(folder / config.GNN_SCORES_FILE)
+    gnn = load_gnn_scores(folder)
+    badge = load_bundle(folder, "A0001", gnn)["disagreement"]
+    assert badge.startswith("LightGBM and GNN disagree: LightGBM 0.99 (above")
+    assert load_queue(folder, gnn).iloc[0]["lightgbm_vs_gnn"] == DISAGREE
 
 
 def test_training_period_rows_get_no_score_and_are_not_a_coverage_problem(folder):
@@ -107,10 +145,16 @@ def test_the_evidence_table_has_a_gnn_column_blank_for_training_rows(folder):
     assert bundle["second_opinion"].startswith("GNN second opinion: 0.90, high")
 
 
-def test_gnn_colouring_darkens_with_score_and_thickens_from_the_threshold():
+def test_the_gnn_scale_runs_from_dim_grey_through_yellow_to_bright_red():
+    (_, grey), (_, yellow), (_, red) = config.GNN_COLOUR_STOPS
+    assert (gnn_colour(0.0), gnn_colour(0.5), gnn_colour(1.0)) == (grey, yellow, red)
+    assert gnn_colour(0.25) not in (grey, yellow)  # blended between the stops
+
+
+def test_gnn_colouring_brightens_with_score_and_thickens_from_the_threshold():
     edges = graph_edges(EVIDENCE, [], {1: 0.9, 2: 0.1})
     high, low, unscored = (edge_style(e, GNN) for e in edges)
-    assert high[0] == blend(config.GNN_LOW_COLOUR, config.GNN_HIGH_COLOUR, 0.9)
+    assert high[0] == gnn_colour(0.9)
     assert high[1] > low[1] and unscored == (config.UNSCORED_EDGE_COLOUR,
                                              config.GNN_EDGE_WIDTH, "dash")  # fmt: skip
     assert edge_style(edges[0], CITATIONS)[0] == config.ALERT_EDGE_COLOUR
@@ -123,13 +167,22 @@ def test_hover_tells_the_gnn_score_or_why_there_is_none():
     assert "GNN" not in graph_edges(EVIDENCE, [])[0].hover
 
 
-def test_the_gnn_figure_has_a_red_alert_outline_and_a_legend_with_the_threshold():
+def test_the_gnn_figure_outlines_the_alert_and_has_a_legend_with_the_threshold():
     figure = build_figure(graph_edges(EVIDENCE, [], {1: 0.9, 2: 0.1}), GNN)
     lines = [t for t in figure.data if t.mode == "lines+markers"]
-    assert lines[-2].line.color == config.ALERT_EDGE_COLOUR  # outline under the alert
+    assert lines[-2].line.color == config.GNN_ALERT_OUTLINE_COLOUR  # under the alert
     bar = [t for t in figure.data if t.mode == "markers" and t.marker.showscale][0]
     assert config.GNN_HIGH_THRESHOLD in bar.marker.colorbar.tickvals
     names = [t.name for t in figure.data if t.showlegend is not False and t.name]
     assert "not scored: GNN training period" in names
     assert not any(t.marker.showscale for t in build_figure(
         graph_edges(EVIDENCE, []), CITATIONS).data if t.mode == "markers")  # fmt: skip
+
+
+def test_only_alert_cited_and_key_accounts_are_labelled_the_rest_on_hover():
+    edges = graph_edges(EVIDENCE, [])  # alert A->B, B->C, C->A; nothing cited
+    assert labelled_accounts(edges) == {"A", "B"}
+    assert labelled_accounts(edges, ["C"]) == {"A", "B", "C"}
+    nodes = build_figure(edges).data[-1]
+    assert dict(zip(nodes.hovertext, nodes.text))["C"] == ""
+    assert set(nodes.hovertext) == {"A", "B", "C"}

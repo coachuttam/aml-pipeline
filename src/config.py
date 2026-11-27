@@ -135,7 +135,7 @@ AUDIT_LOG_FILE = "audit_log.jsonl"  # in artifacts/, so it stays out of git
 DECISIONS = ("escalate", "close")  # what the analyst can choose
 CITED_COLOUR = "#fff3b0"  # row highlight for transactions the note cites
 ALERT_EDGE_COLOUR = "#d62728"  # the alert transaction in the network graph
-GRAPH_HEIGHT_PIXELS = 460  # height of the interactive network next to the table
+GRAPH_HEIGHT_PIXELS = 720  # the network spans the page width below table and note
 GRAPH_PADDING = 0.25  # extra axis room (share of the spread) so labels are not clipped
 CITED_EDGE_COLOUR = "#ff7f0e"  # transactions the note cites
 OTHER_EDGE_COLOUR = "#b0b0b0"  # other evidence transactions
@@ -252,8 +252,12 @@ GNN_RUN_ID = "pna_finetune_f1.0_s0"  # aml-gnn-transfer Phase D, best validation
 GNN_SCORES_FILE = "gnn_scores.parquet"  # in artifacts/: transaction_id, score, period
 GNN_HIGH_THRESHOLD = 0.698430597782135  # best-F1 threshold, chosen on validation there
 GNN_SCORED_FROM = "2022-09-07 00:00"  # GNN validation start; earlier rows trained on
-GNN_LOW_COLOUR = "#deebf7"  # GNN score 0 (light) ...
-GNN_HIGH_COLOUR = "#08306b"  # ... to 1 (dark), one sequential scale
+GNN_COLOUR_STOPS = (
+    (0.0, "#5f5f5f"),  # low: dim grey, recedes on a dark or a light background
+    (0.5, "#ffd400"),  # middle: bright yellow
+    (1.0, "#ff3b1f"),  # high: bright red
+)  # one sequential scale for GNN scores, readable in Streamlit's dark theme
+GNN_ALERT_OUTLINE_COLOUR = "#00c8ff"  # cyan: red already means a high GNN score
 UNSCORED_EDGE_COLOUR = "#bdbdbd"  # grey, drawn dashed: no GNN score
 GNN_HIGH_EDGE_WIDTH = 4  # edges at or above the threshold are drawn thicker
 GNN_EDGE_WIDTH = 2

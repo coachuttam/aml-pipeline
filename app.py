@@ -19,10 +19,12 @@ from src.ui_components import (
     OK_COLOUR,
     REVIEW_COLOUR,
     SYNTHETIC_NOTE,
+    agreement_section,
     badge,
     highlight_cited,
     network_section,
     number_cards,
+    second_opinion_header,
     show_table,
     student_section,
 )
@@ -170,9 +172,7 @@ def page_detail(alert_id: str) -> None:
         "Priority rank %d  ·  %s of all test transactions by score"
         % (alert["rank"], bundle["score_rank"])
     )
-    st.markdown(
-        "**%s.** Priority is set by the LightGBM score." % bundle["second_opinion"]
-    )
+    second_opinion_header(bundle)
     left, right = st.columns([3, 2])
     with left:
         st.subheader("Why the detector flagged it")
@@ -190,7 +190,7 @@ def page_detail(alert_id: str) -> None:
         st.subheader("Case note")
         show_note(bundle)
         regenerate_button(alert_id, bundle)
-        network_section(bundle)
+    network_section(bundle)  # full width, below evidence and note
     decision_form(alert_id, bundle)
 
 
@@ -258,6 +258,7 @@ def page_metrics() -> None:
         detector_section(step1)
     if step2:
         notes_section(step2)
+    agreement_section(get_queue())
     final = load_json_if_present(FOLDER / config.FINAL_COMPARISON_FILE)
     if final:
         student_section(final)

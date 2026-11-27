@@ -13,7 +13,7 @@ and never given to the note writer.
 
 Example:
     gnn = load_gnn_scores(config.ARTIFACTS_DIR)
-    second_opinion_text(gnn, 3157594)   # "GNN second opinion: 0.93, high (...)"
+    second_opinion_text(gnn, 3157594)   # "GNN second opinion: 1.00, high (...)"
 """
 
 from __future__ import annotations
@@ -29,7 +29,9 @@ from src import config
 from src.case_note_input import evidence_transactions
 
 HIGH, LOW, NOT_SCORED = "high", "low", "not scored"
-MIN_SHOWN_PERCENT = 0.01  # below this the header says "top <0.01%"
+AGREE, DISAGREE, NOT_AVAILABLE = "agree", "disagree", "n/a"
+MAX_SHOWN_PERCENT = 99.99  # above this the header says "higher than >99.99%"
+NEAR_TOP_PERCENT = 99.0  # from here two decimals, so 99.95 and 99.99 differ
 
 
 class GnnScores(NamedTuple):
@@ -61,10 +63,17 @@ def band(score: Optional[float]) -> str:
     return HIGH if score >= config.GNN_HIGH_THRESHOLD else LOW
 
 
-def top_percent(gnn: GnnScores, score: float) -> float:
-    """Share (%) of test-period transactions the GNN scores at least this high."""
-    at_least = len(gnn.test_sorted) - np.searchsorted(gnn.test_sorted, score, "left")
-    return 100.0 * at_least / max(len(gnn.test_sorted), 1)
+def higher_than_percent(gnn: GnnScores, score: float) -> float:
+    """Share (%) of test-period transactions the GNN scores strictly lower."""
+    below = np.searchsorted(gnn.test_sorted, score, "left")
+    return 100.0 * below / max(len(gnn.test_sorted), 1)
+
+
+def percent_text(share: float) -> str:
+    """ "28.6", "99.95", or ">99.99" (near 100 the decimals matter)."""
+    if share > MAX_SHOWN_PERCENT:
+        return ">%.2f" % MAX_SHOWN_PERCENT
+    return ("%.2f" if share >= NEAR_TOP_PERCENT else "%.1f") % share
 
 
 def second_opinion_text(gnn: Optional[GnnScores], transaction_id: int) -> str:
@@ -72,13 +81,28 @@ def second_opinion_text(gnn: Optional[GnnScores], transaction_id: int) -> str:
     score = score_of(gnn, transaction_id) if gnn is not None else None
     if score is None:
         return "GNN second opinion: not available"
-    share = top_percent(gnn, score)
-    shown = ("%.2f" if share < 1 else "%.1f") % share  # small shares need decimals
-    if share < MIN_SHOWN_PERCENT:
-        shown = "<%.2f" % MIN_SHOWN_PERCENT
-    return "GNN second opinion: %.2f, %s (top %s%% of test)" % (
-        score, band(score), shown,
+    return "GNN second opinion: %.2f, %s (higher than %s%% of test transactions)" % (
+        score, band(score), percent_text(higher_than_percent(gnn, score)),
     )  # fmt: skip
+
+
+def agreement(lightgbm_high: bool, score: Optional[float]) -> str:
+    """ "agree", "disagree" (one high, the other low) or "n/a" (no GNN score).
+
+    LightGBM is high above its own validation threshold (every alert is), the GNN
+    from GNN_HIGH_THRESHOLD; both thresholds were chosen on validation.
+    """
+    if score is None:
+        return NOT_AVAILABLE
+    return AGREE if lightgbm_high == (band(score) == HIGH) else DISAGREE
+
+
+def disagreement_text(lightgbm_score: float, lightgbm_high: bool, score: float) -> str:
+    """The badge text when the two models disagree."""
+    return "LightGBM and GNN disagree: LightGBM %.2f (%s its threshold), GNN %.2f " \
+        "(%s %.3f)" % (lightgbm_score, "above" if lightgbm_high else "below", score,
+                       "above" if band(score) == HIGH else "below",
+                       config.GNN_HIGH_THRESHOLD)  # fmt: skip
 
 
 def evidence_scores(gnn: Optional[GnnScores], evidence: Dict) -> Dict[int, float]:

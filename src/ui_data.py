@@ -17,7 +17,15 @@ import pandas as pd
 from src import config
 from src.case_note_input import evidence_transactions
 from src.fact_check import CITED_IDS_IN_TEXT
-from src.gnn_scores import GnnScores, evidence_scores, score_of, second_opinion_text
+from src.gnn_scores import (
+    DISAGREE,
+    GnnScores,
+    agreement,
+    disagreement_text,
+    evidence_scores,
+    score_of,
+    second_opinion_text,
+)
 from src.reasons import display_reasons
 
 
@@ -60,6 +68,19 @@ def gnn_of_alert(gnn: Optional[GnnScores], alert: Dict) -> Optional[float]:
     return score_of(gnn, int(alert["edge_id"])) if gnn is not None else None
 
 
+def alert_agreement(gnn: Optional[GnnScores], alert: Dict) -> str:
+    """Do LightGBM (its own threshold) and the GNN (0.698) agree on this alert?"""
+    return agreement(bool(alert.get("above_threshold", True)), gnn_of_alert(gnn, alert))
+
+
+def disagreement_badge(gnn: Optional[GnnScores], alert: Dict) -> Optional[str]:
+    """Badge text when one model is high and the other low, else None."""
+    if alert_agreement(gnn, alert) != DISAGREE:
+        return None
+    high = bool(alert.get("above_threshold", True))
+    return disagreement_text(float(alert["score"]), high, gnn_of_alert(gnn, alert))
+
+
 def load_queue(folder: Path, gnn: Optional[GnnScores] = None) -> pd.DataFrame:
     """The alert queue: priority, score, GNN score, top reason, typology, review.
 
@@ -80,6 +101,7 @@ def load_queue(folder: Path, gnn: Optional[GnnScores] = None) -> pd.DataFrame:
                 "score": float(alert["score"]),
                 "score_rank": top_percent_text(int(alert["rank"]), size),
                 "gnn_score": gnn_of_alert(gnn, alert),
+                "lightgbm_vs_gnn": alert_agreement(gnn, alert),
                 "top_reason": reason_line(display_reasons(alert)[0]),
                 "suggested_typology": note["typology"] if note else "no note",
                 "review": review_label(bool(record.get("needs_review", True))),
@@ -109,6 +131,7 @@ def load_bundle(
         "table": table,
         "record": load_notes(folder).get(alert_id),
         "gnn": scores if gnn is not None else None,
+        "disagreement": disagreement_badge(gnn, alert),
         "second_opinion": second_opinion_text(
             gnn, evidence["alert_transaction"]["transaction_id"]
         ),

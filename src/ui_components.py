@@ -97,17 +97,55 @@ def network_section(bundle: dict) -> None:
     choices = [CITATIONS, GNN] if bundle["gnn"] is not None else [CITATIONS]
     colour_by = st.radio("Colour edges by", choices, horizontal=True)
     edges = graph_edges(bundle["evidence"], cited_ids(bundle["record"]), bundle["gnn"])
-    st.plotly_chart(build_figure(edges, colour_by), use_container_width=True)
+    note = (bundle["record"] or {}).get("note") or {}
+    figure = build_figure(edges, colour_by, note.get("key_accounts", []))
+    st.plotly_chart(figure, use_container_width=True)
     if colour_by == GNN:
         st.caption(
-            "Light to dark: GNN laundering score 0-1; thicker from %.3f (threshold "
-            "chosen on validation). Grey dashed: not scored, because the transaction "
-            "is in the GNN's training period and a score would reflect labels it "
-            "learned. Red outline: the alert. A second opinion only."
+            "Dim grey to yellow to red: GNN laundering score 0-1; thicker from %.3f "
+            "(threshold chosen on validation). Light grey dashed: not scored, because "
+            "the transaction is in the GNN's training period and a score would "
+            "reflect labels it learned. Cyan outline: the alert. Labels: the alert's, "
+            "cited and key accounts (hover for the rest). A second opinion only."
             % config.GNN_HIGH_THRESHOLD
         )
     else:
         st.caption(
-            "Accounts are nodes, transactions are edges. Red: the alert; "
-            "orange: cited by the note. Hover an edge for amount, currency, time."
+            "Accounts are nodes, transactions are edges. Red: the alert; orange: "
+            "cited by the note. Labels: the alert's, cited and key accounts; hover "
+            "for the rest and for amount, currency and time."
+        )
+
+
+def agreement_section(queue: pd.DataFrame) -> None:
+    """How often LightGBM and the GNN disagree on the alerts (no labels used)."""
+    if "lightgbm_vs_gnn" not in queue or (queue["lightgbm_vs_gnn"] == "n/a").all():
+        return
+    counts = queue["lightgbm_vs_gnn"].value_counts()
+    st.subheader("LightGBM vs GNN second opinion (%d alerts)" % len(queue))
+    number_cards(
+        [
+            ("Disagree", str(counts.get("disagree", 0)),
+             "one high, the other low"),
+            ("Agree", str(counts.get("agree", 0)), "both high or both low"),
+            ("No GNN score", str(counts.get("n/a", 0)), "not in the export"),
+        ]
+    )  # fmt: skip
+    st.caption(
+        "High: LightGBM above its validation threshold (every alert is), GNN at or "
+        "above %.3f (threshold chosen on validation). A disagreement is a reason to "
+        "look closer, not a verdict; the priority stays LightGBM's."
+        % config.GNN_HIGH_THRESHOLD
+    )
+
+
+def second_opinion_header(bundle: dict) -> None:
+    """GNN second opinion line, and a badge when LightGBM and the GNN disagree."""
+    st.markdown(
+        "**%s.** Priority is set by the LightGBM score." % bundle["second_opinion"]
+    )
+    if bundle["disagreement"]:
+        st.markdown(
+            badge("⚠ " + bundle["disagreement"], REVIEW_COLOUR),
+            unsafe_allow_html=True,
         )

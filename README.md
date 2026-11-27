@@ -212,9 +212,9 @@ All runs are `completed`. The chosen model is the PNA with 100% of labels, **cho
 **Export result:** 2,491,115 scores (1,316,442 validation, 1,174,673 test), 0 missing, extra or duplicate; the sampler had dropped 26 validation and 1,412 test edges, now added back. **The Project 4 (aml-gnn-transfer) F1 is unchanged when the sampler-dropped edges are added back: 0.332 validation / 0.367 test, on the sampled edges and on all edges alike.**
 
 **Built:** `src/gnn_scores.py` joins the scores to the 200 alerts. Of the 10,182 evidence rows, 8,519 are scored and 1,663 are in the GNN's training period and stay unscored; no row from 2022-09-07 on lacks a score (`python -m src.gnn_scores` checks this). In the UI:
-- **Alert detail:** a header "GNN second opinion: 0.93, high (top x% of test). Priority is set by the LightGBM score." and a `gnn_score` column in the evidence table.
-- **Queue:** a `gnn_score` column, sortable; the default order stays LightGBM priority.
-- **Network graph:** a toggle "Colour edges by: note citations | GNN score". GNN mode has a light-to-dark scale, thicker edges from 0.698, grey dashed for unscored and a red outline on the alert, with a colour bar (0.698 tick) and legend.
+- **Alert detail:** a header "GNN second opinion: 0.00, low (higher than 28.6% of test transactions). Priority is set by the LightGBM score." and a `gnn_score` column in the evidence table. When one model is high and the other low (LightGBM above its validation threshold, GNN below 0.698, or the reverse), a badge says so, e.g. A0003: LightGBM 1.00, GNN 0.00.
+- **Queue:** `gnn_score` and `lightgbm_vs_gnn` (agree / disagree) columns, sortable; the default order stays LightGBM priority. **The models disagree on 136 of the 200 alerts**: every alert is above the LightGBM threshold, and the GNN calls 136 of them low. The metrics page shows the count.
+- **Network graph:** full width below the evidence and the note, 720 px high. A toggle switches "Colour edges by: note citations | GNN score". GNN mode is readable in the dark theme: dim grey (low) to yellow to bright red (high), thicker from 0.698, light grey dashed for unscored and a cyan outline on the alert (red now means a high score). It has a colour bar with the 0.698 tick and a legend. Only the alert's accounts, the cited ones and the note's key accounts are labelled; the others show on hover.
 - 64 of the 200 alerts are "high"; Spearman correlation between the GNN score and the LightGBM rank is 0.69 (no labels used).
 - Without `artifacts/gnn_scores.parquet` the UI works as before.
 
