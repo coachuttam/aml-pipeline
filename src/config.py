@@ -252,6 +252,13 @@ UI_NOTES_FILE, UI_NOTE_VERSION = NOTE_WRITERS[NOTE_WRITER]  # what the UI shows
 # V2 step 1: GNN second opinion (scores exported on Colab by src/gnn_export.py).
 GNN_RUN_ID = "pna_finetune_f1.0_s0"  # aml-gnn-transfer Phase D, best validation F1
 GNN_SCORES_FILE = "gnn_scores.parquet"  # in artifacts/: transaction_id, score, period
+# Per-typology recall (analysis only): LightGBM's whole test period, re-fit once with
+# the frozen step 1 settings because step 1 kept only the 200 alerts' scores.
+LIGHTGBM_TEST_SCORES_FILE = "lightgbm_test_scores.parquet"  # transaction_id, score
+TYPOLOGY_RECALL_FILE = "typology_recall.json"  # in artifacts/
+REFIT_SCORE_TOLERANCE = 1e-9  # the re-fit must give the step 1 alert scores exactly
+UNLISTED = "NOT_LISTED"  # laundering but absent from LI-Small_Patterns.txt
+FOCUS_TYPOLOGIES = ("SCATTER_GATHER", "GATHER_SCATTER", "FAN_IN", "FAN_OUT")
 GNN_HIGH_THRESHOLD = 0.698430597782135  # best-F1 threshold, chosen on validation there
 GNN_SCORED_FROM = "2022-09-07 00:00"  # GNN validation start; earlier rows trained on
 GNN_COLOUR_STOPS = (

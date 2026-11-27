@@ -403,7 +403,38 @@ streamlit run app.py        # reads artifacts/ only; no API key needed
 
 Pages: alert queue (filter, sort), alert detail (reasons, evidence with cited rows highlighted, network graph, case note, fact-check status), a decision form at the bottom of the detail page (escalate or close with a comment, saved to `artifacts/audit_log.jsonl`, git-ignored; the Audit log page lists it) and metrics with caveats. Notes come from the V2 student by default (typology shown as a suggestion the analyst confirms); with `AML_PIPELINE_NOTE_WRITER=prompt_v3` the V1 notes are shown and the optional "Regenerate note" button is the only live OpenAI call. A 5-minute script is in `docs/DEMO.md`.
 
-## Limits
+## Limits and next steps
+
+### Detection recall per typology (test period, analysis only)
+
+Every laundering transaction in the LI-Small test period (1,174,673 transactions) is counted by its IBM pattern type. A model catches it when its score is at or above its own threshold, both chosen on validation: LightGBM flags 479 test transactions, the GNN 655. `python -m src.typology_recall` writes `artifacts/typology_recall.json`.
+
+Step 1 kept only the 200 alerts' LightGBM scores, so this run re-fitted the frozen step 1 detector once, with the same settings and seeds. It reproduced the step 1 threshold and all 200 alert scores exactly before anything was counted. Nothing was tuned.
+
+| Typology (test) | n laundering txns | LightGBM recall (>= 0.221) | GNN recall (>= 0.698) | Either |
+| --- | --- | --- | --- | --- |
+| **SCATTER_GATHER** | 59 | 26 (44%) | 50 (85%) | 53 (90%) |
+| **GATHER_SCATTER** | 70 | 30 (43%) | 67 (96%) | 68 (97%) |
+| **FAN_IN** | 14 | 5 (36%) | 12 (86%) | 12 (86%) |
+| **FAN_OUT** | 46 | 17 (37%) | 44 (96%) | 44 (96%) |
+| BIPARTITE | 42 | 20 (48%) | 27 (64%) | 32 (76%) |
+| CYCLE | 42 | 21 (50%) | 25 (60%) | 30 (71%) |
+| RANDOM | 21 | 7 (33%) | 17 (81%) | 18 (86%) |
+| STACK | 24 | 6 (25%) | 18 (75%) | 19 (79%) |
+| NOT_LISTED | 484 | 6 (1%) | 7 (1%) | 12 (2%) |
+| **ALL** | 802 | 138 (17%) | 267 (33%) | 288 (36%) |
+
+- **The two-stage patterns are not a detection problem.** The GNN catches 85% of SCATTER_GATHER and 96% of GATHER_SCATTER transactions, about as well as FAN_IN (86%) and FAN_OUT (96%). LightGBM catches 36-44% of all four, about the same for each.
+  - The student's weakness on two-stage patterns (1/11 and 5/10 typology right) is therefore about naming the pattern from a 50-transaction evidence window that shows one half of it. It is not about which alerts reach the queue.
+- **The GNN sees the shape, LightGBM mostly doesn't.** The GNN's recall is about twice LightGBM's on every listed typology. Its lead is smallest on BIPARTITE and CYCLE (64% and 60%).
+- **Most laundering is not in the patterns file.** 484 of the 802 laundering test transactions (60%) aren't in `LI-Small_Patterns.txt`, and both models miss about 99% of them. Overall recall is 17% for LightGBM and 33% for the GNN, matching their F1 records.
+- **Caveat:** the GNN sees every bank's transactions. A single bank would see less of each pattern, so its GNN recall would likely be lower.
+- **Next steps:**
+  - Rank the queue by the higher of the two scores, or by a combination chosen on validation. "Either" catches 36% against LightGBM's 17%, at the cost of more alerts; check this on validation first.
+  - Build evidence that follows a pattern across both of its stages, so the student can see a whole two-stage pattern.
+  - Re-check the per-typology numbers on a single bank's view of the graph.
+
+### Other limits
 
 - ACH is a known shortcut in IBM's synthetic data: the payment format is often the strongest SHAP reason, so do not read a high score as real-world suspicion.
 - Case-note totals are per currency (never summed across currencies).
@@ -420,4 +451,4 @@ Pages: alert queue (filter, sort), alert detail (reasons, evidence with cited ro
 
 ## Licence
 
-Copyright (c) 2026 Uttam Kumar. All rights reserved. Shared for viewing and evaluation only; see [LICENSE](LICENSE). Contact the author for any reuse.
+MIT. Copyright (c) 2026 Uttam Kumar; see [LICENSE](LICENSE).
