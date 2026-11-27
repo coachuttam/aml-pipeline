@@ -1,8 +1,92 @@
-# AML pipeline
+# Explainable AML triage: findings
 
-Explainable AML pipeline V1 on IBM's synthetic LI-Small data: **detect -> explain -> evidence -> LLM case note -> UI**. Step 1 (detect, reason codes, evidence, ground truth) is built. The LLM note and the UI are not.
+Research prototype on IBM's synthetic LI-Small transactions. Detailed results are [further down](#step-1-result). Docs: [PRD](PRD.md) · [Architecture](ARCHITECTURE.md) · [V2 plan](docs/V2_PLAN.md) · [Offline demo](docs/OFFLINE_DEMO.md) · [Agent rules](AGENTS.md)
 
-Docs: [PRD](PRD.md) · [Architecture](ARCHITECTURE.md) · [Agent rules](AGENTS.md)
+## Problem
+
+Transaction monitoring produces far more alerts than analysts can review, and most are false alarms. A score alone does not help an analyst decide: they need to see why an alert fired, which transactions support it, and a draft note a reviewer can check. Banks also need this to run where the data is, without sending customer transactions to an outside AI service. This pipeline ranks alerts and explains each one from its own evidence. It checks every fact in the note, keeps the analyst as the decision maker, and runs offline on a laptop.
+
+## How it works
+
+```mermaid
+flowchart LR
+  A[Transactions] --> B[LightGBM score<br/>+ SHAP reasons]
+  B --> C[Evidence:<br/>linked transactions]
+  C --> D[Student case note<br/>Qwen2.5-7B + LoRA]
+  D --> E[Fact check:<br/>ids, accounts, amounts, dates]
+  B --> G[GNN second opinion<br/>edge scores]
+  E --> F{Analyst:<br/>escalate / close,<br/>confirm typology}
+  G --> F
+  F -->|escalate| H[goAML-style STR draft<br/>never auto-filed]
+  F --> I[(Audit log)]
+  H --> I
+```
+
+LightGBM sets the priority. The GNN is shown beside it as a second opinion, and the case note suggests a typology. The analyst decides everything.
+
+## Results (LI-Small test, 200 alerts, scored once)
+
+| | V1: prompted `gpt-4.1-mini` | V2: fine-tuned student (offline) |
+| --- | --- | --- |
+| Typology right, laundering alerts whose pattern the evidence shows | 12/37 (32%) | **18/37 (49%)** |
+| Says "unclear" on false alarms (147) | 0/147 | **136/147 (93%)** |
+| Invented facts per checked claim | 20/7,403 (2.7 per 1,000) | **6/6,351 (0.9 per 1,000)** |
+| Valid JSON notes | 200/200 | 200/200 |
+| Where it runs | Cloud API, about 6.5 s per note | **Laptop, no internet**: 292 s per note on an 8 GB M2 (Q4_K_M GGUF) |
+
+| Detector, minority-class F1 on the LI-Small test period | F1 |
+| --- | --- |
+| LightGBM (priority) | 0.216 |
+| GNN, PNA fine-tuned (second opinion, Project 4) | **0.367** |
+
+- **Agreement:** the GNN calls 136 of the 200 alerts low. The UI flags each of these disagreements.
+- **Offline model check:** the quantised offline model passed its dev check (50/50 valid JSON, 0/1,189 invented facts, same typology as the full model on 40/50). The test numbers above are the full model's.
+
+## What each project contributes
+
+| Project | Contribution |
+| --- | --- |
+| 1. LLM case notes | The prompted case-note approach, rebuilt here as the V1 baseline (`gpt-4.1-mini`) |
+| 2. LightGBM and features | Transaction features, metric definitions, the explainable detector with SHAP reasons |
+| 3. Fine-tuned case-note student | Qwen2.5-7B LoRA trained on teacher notes from HI-Small; the V2 note writer, offline as a GGUF |
+| 4. GNN transfer ([aml-gnn-transfer](../aml-gnn-transfer)) | The LightGBM baseline config and the fine-tuned PNA graph model behind the second opinion |
+
+## Honest limits
+
+- **Small numbers:** n=37 laundering alerts with a visible pattern. The 95% intervals of V1 and V2 overlap (about 20-49% and 33-64%).
+- **Weak on two-stage patterns:** scatter-gather was right 1/11 and gather-scatter 5/10. The student sees only one half of the pattern.
+- **The dev set missed:** on dev the student scored 3/19, below every baseline. Test was run only because the model was frozen beforehand, and only once.
+- **Synthetic data:** IBM's simulated transactions have no customers and no KYC. Nothing here is validated on real bank data.
+- **Whole graph versus one bank:** the GNN and the evidence see every bank's transactions. A real bank sees only its own accounts and its counterparties, so the GNN result probably overstates what one bank would get.
+- **goAML-style, not certified:** the STR draft follows goAML's main parts but uses our own schema. It is not a UAE FIU format, it is full of placeholders, and it is never filed.
+- **Offline speed:** about 5 minutes per note on an 8 GB laptop. That is fine for a demo, slow for a queue.
+
+## Regulatory fit (design intent, not a compliance assessment)
+
+The design follows the main themes of the CBUAE's 2026 guidance note on responsible AI for licensed financial institutions and of the RBI's FREE-AI committee framework (August 2025):
+
+- **Human in the loop:** the model never decides. The analyst escalates or closes and confirms any typology, and drafts are never filed automatically.
+- **Explainability:** every alert shows SHAP reasons, the linked transactions and the network graph. Every claim in a note cites a transaction id and is checked, and failing notes are flagged for review.
+- **Audit:** each decision, typology confirmation and draft goes into an append-only log, with the note version. A demo reset archives the log; it never deletes it.
+- **Data stays local:** the V2 student runs on the bank's own machine through Ollama, with no external API.
+
+Validation, model-risk management and data governance would still be the bank's own work.
+
+## Quick start
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+python -m src.run_step1                                    # alerts, evidence (needs the LI-Small CSV)
+streamlit run app.py                                       # UI with the saved student notes
+OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve   # offline model (setup: docs/OFFLINE_DEMO.md)
+AML_PIPELINE_NOTE_WRITER=ollama streamlit run app.py       # UI that writes new notes offline
+```
+
+The UI reads saved files in `artifacts/`, so only the commands that write notes need a GPU or Ollama. See [Run](#run) for details.
+
+---
+
+# Detailed results
 
 ## Step 1 result
 
