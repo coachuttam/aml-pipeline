@@ -417,3 +417,7 @@ Pages: alert queue (filter, sort), alert detail (reasons, evidence with cited ro
 - "Unclear" is 40% of the rebalanced train split but 60% of validation, so validation loss is not comparable to the train mix.
 - Teacher notes are written with knowledge of the truth. A note can be right about the typology for reasons the student cannot see in the evidence, so student accuracy may stay below the teacher's.
 - The `evidence1` train file was 50.6% laundering and 63.5% "unclear", and the student said "unclear" for 18/20 visible patterns on HI-Small val. `train_v3` (35% "unclear") repeats RANDOM examples about twice per epoch, so 2 epochs may overfit them.
+
+## Licence
+
+Copyright (c) 2026 Uttam Kumar. All rights reserved. Shared for viewing and evaluation only; see [LICENSE](LICENSE). Contact the author for any reuse.
