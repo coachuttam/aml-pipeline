@@ -6,6 +6,8 @@ For an alert (sender S pays receiver R at time T) the evidence is:
   (other than S and R) within the same window.
 At most 50 linked transactions are kept, hop 1 first and the nearest in time
 first inside each hop. The file records how many existed and whether it was cut.
+Strategy "capped" (evidence v2) keeps at most 35 hop-1 and 15 hop-2 rows, so a hub
+whose hop 1 alone fills 50 still shows where the money went next.
 
 The input has no label column, so evidence cannot carry one (AGENTS.md rule 2).
 
@@ -97,12 +99,21 @@ def describe(index: EvidenceIndex, rows: np.ndarray, hop: int) -> List[Dict[str,
     ]
 
 
-def nearest_document(index: EvidenceIndex, row: int) -> Dict[str, Any]:
-    """Strategy "nearest": hop 1 first, then hop 2, the 50 nearest in time."""
+def nearest_document(
+    index: EvidenceIndex,
+    row: int,
+    hop1_cap: Optional[int] = None,
+    hop2_cap: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Strategy "nearest": hop 1 first, then hop 2, the 50 nearest in time.
+
+    With caps (strategy "capped") each hop keeps at most its own cap.
+    """
     hops = hop_rows(index, row)
     room = config.EVIDENCE_MAX_EDGES
-    kept_first = hops[1][:room]
-    kept_second = hops[2][: room - len(kept_first)]
+    kept_first = hops[1][: room if hop1_cap is None else hop1_cap]
+    second_room = room - len(kept_first) if hop2_cap is None else hop2_cap
+    kept_second = hops[2][:second_room]
     return {
         "linked_transactions": describe(index, kept_first, 1)
         + describe(index, kept_second, 2),
@@ -110,7 +121,9 @@ def nearest_document(index: EvidenceIndex, row: int) -> Dict[str, Any]:
             "hop1_found": int(len(hops[1])),
             "hop2_found": int(len(hops[2])),
             "included": int(len(kept_first) + len(kept_second)),
-            "truncated": bool(len(hops[1]) + len(hops[2]) > room),
+            "truncated": bool(
+                len(hops[1]) + len(hops[2]) > len(kept_first) + len(kept_second)
+            ),
         },
     }
 
@@ -145,13 +158,16 @@ def build_evidence(
 ) -> Dict[str, Any]:
     """The evidence document for one alert (JSON-ready)."""
     strategy = strategy or config.EVIDENCE_STRATEGY
-    if strategy not in config.EVIDENCE_STRATEGIES:
+    if strategy == config.EVIDENCE_V2_STRATEGY:
+        body = nearest_document(
+            index, row, config.EVIDENCE_V2_HOP1_EDGES, config.EVIDENCE_V2_HOP2_EDGES
+        )
+    elif strategy == "nearest":
+        body = nearest_document(index, row)
+    elif strategy == "flow":
+        body = flow_document(index, row)
+    else:
         raise ValueError("Unknown evidence strategy %r" % strategy)
-    body = (
-        nearest_document(index, row)
-        if strategy == "nearest"
-        else flow_document(index, row)
-    )
     return {
         "alert_id": alert_id,
         "strategy": strategy,

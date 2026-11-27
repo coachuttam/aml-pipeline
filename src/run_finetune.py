@@ -78,13 +78,15 @@ def write_dataset(folder: Path, candidates: Path, records: List[Dict]) -> Dict:
     return report
 
 
-def write_dev_inputs(dev_folder: Path, output: Path) -> int:
+def write_dev_inputs(
+    dev_folder: Path, output: Path, evidence_folder: str = config.EVIDENCE_FOLDER
+) -> int:
     """The alerts of a folder as system + user messages only (no note, no truth)."""
     alerts = pd.read_parquet(dev_folder / config.ALERTS_FILE)
     lines = []
     for alert in alerts.to_dict("records"):
         name = "%s.json" % alert["alert_id"]
-        evidence = json.loads((dev_folder / config.EVIDENCE_FOLDER / name).read_text())
+        evidence = json.loads((dev_folder / evidence_folder / name).read_text())
         lines.append(
             {
                 "alert_id": alert["alert_id"],

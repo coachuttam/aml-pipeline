@@ -75,6 +75,11 @@ EVIDENCE_FLOW_EDGES = 35  # "flow" strategy: onward and backward along the money
 EVIDENCE_STRATEGY = "nearest"
 EVIDENCE_STRATEGIES = ("nearest", "flow")
 EVIDENCE_NEAREST_FOLDER = "evidence_nearest"  # the other strategy, for comparison only
+# Evidence v2 ("capped"): dev alerts are hubs, so 50 hop-1 rows left no room for hop 2.
+EVIDENCE_V2_STRATEGY = "capped"  # nearest in time, but each hop has its own cap
+EVIDENCE_V2_HOP1_EDGES = 35  # at most this many hop-1 rows (touching S or R)
+EVIDENCE_V2_HOP2_EDGES = 15  # at most this many hop-2 rows, kept even for a hub
+EVIDENCE_V2_FOLDER = "evidence_v2"  # beside evidence/ in an alert folder
 
 # Metrics (same definitions as Project 2 and aml-gnn-transfer).
 PRECISION_AT_K = 100

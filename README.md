@@ -103,6 +103,54 @@ Notebook (`RUN_NAME = "typology2"`): trains on `train_v3.jsonl` for 2 epochs, th
 
 **Gate.** The notebook writes the val notes first. `python -m src.score_student --set val` prints `gate`: pass only if typology is right for at least 10 of 20 visible patterns and at least 50% of false alarms are "unclear". Only then set `VAL_GATE_PASSED = True` and run dev; test runs once, last. `evidence1` fails it (1/20, 90%).
 
+### `typology2` results and review
+
+HI-Small val: typology 12/20 (gate passed). LI-Small dev: typology 3/19 on visible patterns, "unclear" on 20/21 false alarms and 0/19 visible patterns, invented facts 17/1,391 claims, JSON 50/50. Not scored on test. `python -m src.run_review confusion|invented|evidence2` (CPU, report in `data/finetune/review.json`):
+
+Confusion, HI-Small val (rows true, columns predicted; "unclear (thin)" = laundering whose pattern the evidence does not show):
+
+| true \ predicted | FAN_OUT | FAN_IN | GATHER_SCATTER | SCATTER_GATHER | CYCLE | RANDOM | unclear |
+|---|---|---|---|---|---|---|---|
+| FAN_OUT | **3** | . | . | . | . | . | . |
+| FAN_IN | . | **4** | . | . | . | . | . |
+| GATHER_SCATTER | 1 | . | **1** | . | . | . | 1 |
+| SCATTER_GATHER | . | 2 | 1 | **0** | . | . | . |
+| CYCLE | . | . | . | . | **1** | 3 | . |
+| RANDOM | . | . | . | . | . | **3** | . |
+| unclear (thin) | . | . | . | . | . | 2 | **8** |
+| false alarm | . | 2 | . | 2 | . | . | **16** |
+
+Confusion, LI-Small dev:
+
+| true \ predicted | FAN_OUT | FAN_IN | GATHER_SCATTER | SCATTER_GATHER | CYCLE | RANDOM | unclear |
+|---|---|---|---|---|---|---|---|
+| FAN_OUT | **1** | . | . | . | . | . | . |
+| GATHER_SCATTER | 6 | 2 | **2** | 1 | . | . | . |
+| SCATTER_GATHER | 1 | 4 | . | **0** | . | . | . |
+| CYCLE | 1 | . | . | . | **0** | 1 | . |
+| unclear (thin) | 1 | 1 | . | 1 | . | 1 | **6** |
+| false alarm | . | . | . | . | 1 | . | **20** |
+
+The fan typologies are learned; the two-stage ones are not: SCATTER_GATHER is 0/3 on val and 0/5 on dev (read as FAN_IN), GATHER_SCATTER 1/3 and 2/11 (dev: mostly read as FAN_OUT), CYCLE 1/4 (read as RANDOM). Dev is 11/19 GATHER_SCATTER, so this weakness costs most there. Dev evidence had no hop-2 rows, so the second stage of a pattern was rarely visible.
+
+Invented facts on dev (17, in 4 of 50 notes): 14 transaction ids (13 in the text, 1 in `cited_txn_ids`), 3 amounts, 0 accounts. 13 of the ids continue a run of consecutive evidence ids by 1-2 (for example 3971603 when the evidence has 3971604-3971609; 10 of them in one note, A0001); 1 is 6 below such a run. The 3 amounts (A0040) are evidence amounts with the decimal point moved one place (295,474.62 written as 29,547.46). Counts and dates are not fact-checked, so none can be counted. The check also misses amounts with one decimal: A0040's "19,969,689.1" (1,996,968.91 moved) is a further invented amount not in the 17.
+
+### Evidence v2 (dev and test inputs only, no retraining)
+
+Strategy `capped`: the nearest in time as before, but at most 35 hop-1 and 15 hop-2 rows (v1: 50, hop 1 first). Written to `evidence_v2/` beside `evidence/` (dev: `artifacts/dev_finetune/`, test: `artifacts/`) and as `data/finetune/dev_inputs_v2.jsonl` and `test_inputs_v2.jsonl`, in train's exact input format (checked). Train's own evidence stays v1. Rule settings tuned on dev only, per version; test scored with them, never tuned.
+
+| | dev v1 | dev v2 | test v1 | test v2 | train |
+|---|---|---|---|---|---|
+| hop 1 / hop 2 share of linked rows | 100% / 0% | 70% / 30% | 91% / 9% | 69% / 31% | 77% / 21% |
+| alerts with no hop-2 row | 50/50 | 0/50 | 147/200 | 0/200 | |
+| mean pattern coverage (laundering with a known pattern) | 0.278 (28) | **0.217** | 0.491 (51) | **0.466** | |
+| pattern visible (3+ of its rows) | 19 | **16** | 37 | 37 | |
+| rule baseline, right typology on visible | 11/19 | 9/16 | 7/37 | 3/37 | |
+| rule baseline, "unclear" on false alarms | 3/21 | 19/21 | 72/147 | 121/147 | |
+| always GATHER_SCATTER | 11/19 | 9/16 | 10/37 | 10/37 | |
+
+v2 gives dev the hop mix train had, but it **lowers pattern coverage** (dev 0.278 to 0.217, 3 fewer visible patterns; test 0.491 to 0.466): for these hub alerts more of the pattern sat in hop-1 rows 36-50 than in the 15 hop-2 rows that replace them. The rule baseline does not beat the constant on either version. Whether the student does better on v2 (closer to its training input) is not known until it is run on `dev_inputs_v2.jsonl`; the dev scoring for v2 needs `pattern_visible` from v2 evidence, which `score_student` does not compute yet.
+
 ## Run
 
 ```bash
