@@ -83,7 +83,7 @@ def score_set(folder: Path, raw_path: Path) -> Dict:
     return report
 
 
-COMPARISON_FILE = "student_vs_baselines.json"
+COMPARISON_FILE = config.FINAL_COMPARISON_FILE
 
 
 def refuse_test_rescore(raw_path: Path, folder: Path) -> None:

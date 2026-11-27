@@ -130,8 +130,7 @@ TYPOLOGIES: Tuple[str, ...] = (
 UNCLEAR = "unclear"
 
 # Step 3: review UI (reads saved artifacts only).
-UI_NOTES_FILE = "notes_step2_v3.json"  # the notes the UI shows (prompt v3)
-UI_NOTE_VERSION = "v3"  # recorded in the audit log with each decision
+REGENERATE_PROMPT_VERSION = "v3"  # the live "Regenerate note" button (V1 writer only)
 AUDIT_LOG_FILE = "audit_log.jsonl"  # in artifacts/, so it stays out of git
 DECISIONS = ("escalate", "close")  # what the analyst can choose
 CITED_COLOUR = "#fff3b0"  # row highlight for transactions the note cites
@@ -224,3 +223,26 @@ CHAT_TEMPLATE_TOKENS = 20  # role markers Qwen's chat template adds per example
 FROZEN_STUDENT_RUN = "typology2"  # the only run whose test answers may be scored
 RULE_SETTINGS_FROM_DEV = (24, 4, 1)  # window h, degree, hub payers: best on dev v1
 V1_COMPARISON_NOTES = "notes_step2_v3.json"  # gpt-4.1-mini, prompt v3, same alerts
+FINAL_COMPARISON_FILE = "student_vs_baselines.json"  # in artifacts/, written once
+
+# Final results (summary numbers only, committed under results/).
+RESULTS_DIR = PROJECT_ROOT / "results"
+RESULTS_CHART_DPI = 150  # sharp enough for the README, small enough for git
+RESULTS_STUDENT_COLOUR = "#2b6cb0"  # the student stands out; the others are grey
+RESULTS_OTHER_COLOUR = "#a0aec0"
+
+# V2 note writer: the frozen typology2 student writes the notes the pipeline shows.
+STUDENT_ADAPTER_DIR = Path(
+    os.environ.get(
+        "AML_PIPELINE_STUDENT_ADAPTER",
+        str(PROJECT_ROOT / "models" / "adapter_Qwen2.5-7B-Instruct_typology2"),
+    )
+)  # the LoRA adapter from Colab (Drive: aml_finetune/); never committed
+STUDENT_BASE_MODEL = "Qwen/Qwen2.5-7B-Instruct"  # the model the adapter was trained on
+STUDENT_NOTES_FILE = "notes_student.json"  # in artifacts/, fact-checked student notes
+NOTE_WRITERS = {
+    "student": (STUDENT_NOTES_FILE, "v2-student-typology2"),
+    "prompt_v3": ("notes_step2_v3.json", "v3"),
+}  # writer -> (notes file in artifacts/, version recorded in the audit log)
+NOTE_WRITER = os.environ.get("AML_PIPELINE_NOTE_WRITER", "student")  # V2 default
+UI_NOTES_FILE, UI_NOTE_VERSION = NOTE_WRITERS[NOTE_WRITER]  # what the UI shows

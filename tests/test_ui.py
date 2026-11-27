@@ -57,7 +57,7 @@ def folder(tmp_path: Path) -> Path:
 
 def test_queue_has_priority_score_top_reason_typology_and_review_flag(folder):
     row = load_queue(folder).iloc[0]
-    assert row["priority_rank"] == 1 and row["typology_hint"] == "FAN_OUT"
+    assert row["priority_rank"] == 1 and row["suggested_typology"] == "FAN_OUT"
     assert "7 days" in row["top_reason"] and "strong" in row["top_reason"]
     assert row["review"] == "✓ clean" and row["score_rank"] == "top 0.0100%"
 
@@ -65,7 +65,7 @@ def test_queue_has_priority_score_top_reason_typology_and_review_flag(folder):
 def test_a_missing_note_shows_as_needing_review(folder):
     (folder / config.UI_NOTES_FILE).write_text("[]")
     row = load_queue(folder).iloc[0]
-    assert row["typology_hint"] == "no note" and row["review"].startswith("⚠")
+    assert row["suggested_typology"] == "no note" and row["review"].startswith("⚠")
 
 
 def test_bundle_has_reasons_evidence_table_and_cited_ids(folder):

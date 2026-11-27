@@ -165,6 +165,32 @@ python -m src.score_student --set test --raw data/finetune/test_raw_Qwen2.5-7B-I
 
 It refuses any file but the `typology2` run's, and refuses a second scoring (`artifacts/student_vs_baselines.json` exists). The report gives the student's typology on visible patterns, "unclear" on false alarms, invented facts and JSON validity, beside always-GATHER_SCATTER, the rule baseline (settings fixed from dev: 24 h, 4 counterparties, hub with 1 payer; `RULE_SETTINGS_FROM_DEV`) and V1 prompt v3 (gpt-4.1-mini) re-checked with the fixed fact check. V1 v3 saw the model score and SHAP reasons as well as the evidence; the student saw the evidence only. The notebook's test cell reads `test_inputs.jsonl` and writes `test_raw_Qwen2.5-7B-Instruct_typology2.jsonl` with the `typology2` adapter; it resumes only from that file, so the old `evidence1` answers are never read. After a restart, run only the settings cell and the test cell.
 
+## Final test result (run once on the frozen student)
+
+The `typology2` student was run once on the 200 LI-Small test alerts (v1 evidence inputs) and scored once. Nothing was changed after. Table: `results/final_test.md` (`python -m src.final_results`).
+
+| System | Typology right (visible patterns) | "unclear" on false alarms | Invented facts per claim | JSON valid |
+| --- | --- | --- | --- | --- |
+| **V2 student (Qwen2.5-7B + LoRA typology2)** | **18/37 (48.6%)** | **136/147 (92.5%)** | **6/6,351 (0.9 per 1,000)** | 200/200 |
+| V1 prompt v3 (gpt-4.1-mini) | 12/37 (32.4%) | 0/147 (0.0%) | 20/7,403 (2.7 per 1,000) | 200/200 |
+| Rule baseline (settings from dev) | 7/37 (18.9%) | 72/147 (49.0%) | n/a (no text) | n/a |
+| Always GATHER_SCATTER | 10/37 (27.0%) | 0/147 (0.0%) | n/a (no text) | n/a |
+
+![Final test: typology, "unclear" on false alarms, invented facts](results/final_test.png)
+
+**Caveats:**
+
+- **n=37.** 18/37 has a 95% interval of about 33-64%, and V1's 12/37 about 20-49%. They overlap, so "better than V1" is likely but not settled. The student is right on about half the visible patterns, so its typology is a suggestion, not a result.
+- **Two-stage patterns are still weak.** SCATTER_GATHER was right 1/11 (10 were called FAN_IN) and GATHER_SCATTER 5/10 (5 were called FAN_OUT). The student sees one half of the pattern. FAN_OUT 5/7 and FAN_IN 3/3 carry most of the score.
+- **The dev result missed** (3/19, below every baseline). Test went ahead only because the model was frozen beforehand, not because dev passed. Dev (50 alerts, 11/19 GATHER_SCATTER) and test disagree a lot, which is one more reason to read every number here as small-sample.
+- **Run once on a frozen model.** No setting was chosen on test (the rule settings came from dev). `score_student` refuses a second test scoring.
+- "Unclear" is cheap to say. 92.5% on false alarms comes with 1/37 "unclear" on visible laundering and 15/16 on laundering whose pattern the evidence does not show. The student says "unclear" whenever the evidence is thin, so a typed answer means it found a shape.
+- **V1 saw more input than the student** (score and SHAP reasons) and makes more claims per note. Invented facts are counted with the same fixed check for both. 6 student notes need review.
+
+**The student is now the V2 note writer.** `config.NOTE_WRITER = "student"` (the default; `AML_PIPELINE_NOTE_WRITER=prompt_v3` switches back to V1). The UI reads `artifacts/notes_student.json` and shows "Suggested typology: X (fine-tuned student; analyst confirms)". The audit log records `v2-student-typology2` with each decision. For new alerts, `python -m src.note_writer inputs | generate | notes`: `generate` needs a GPU and the adapter at `config.STUDENT_ADAPTER_DIR` (`models/`, git-ignored; or set `AML_PIPELINE_STUDENT_ADAPTER`), and `notes` fact-checks each answer against its own evidence without reading ground truth. The metrics page shows the final test beside V1.
+
+**Remaining V2 steps** (short plan in [docs/V2_PLAN.md](docs/V2_PLAN.md)): 1. GNN scores and edge colours; 2. goAML draft; 3. offline GGUF / Ollama demo.
+
 ## Run
 
 ```bash
@@ -190,7 +216,7 @@ source .venv/bin/activate && pip install -r requirements.txt
 streamlit run app.py        # reads artifacts/ only; no API key needed
 ```
 
-Pages: alert queue (filter, sort), alert detail (reasons, evidence with cited rows highlighted, network graph, case note, fact-check status), a decision form at the bottom of the detail page (escalate or close with a comment, saved to `artifacts/audit_log.jsonl`, git-ignored; the Audit log page lists it) and metrics with caveats. The optional "Regenerate note" button is the only live OpenAI call. A 5-minute script is in `docs/DEMO.md`.
+Pages: alert queue (filter, sort), alert detail (reasons, evidence with cited rows highlighted, network graph, case note, fact-check status), a decision form at the bottom of the detail page (escalate or close with a comment, saved to `artifacts/audit_log.jsonl`, git-ignored; the Audit log page lists it) and metrics with caveats. Notes come from the V2 student by default (typology shown as a suggestion the analyst confirms); with `AML_PIPELINE_NOTE_WRITER=prompt_v3` the V1 notes are shown and the optional "Regenerate note" button is the only live OpenAI call. A 5-minute script is in `docs/DEMO.md`.
 
 ## Limits
 

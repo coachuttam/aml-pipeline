@@ -1,7 +1,8 @@
 """Review screen for the explainable AML pipeline. Run with:  streamlit run app.py
 
-Reads saved artifacts only (no live LLM calls). The optional "Regenerate note" button
-is the one exception and needs OPENAI_API_KEY. Style follows the Project 1 app.
+Reads saved artifacts only (no live LLM calls). Notes come from config.NOTE_WRITER:
+the fine-tuned student (default) or V1 prompt v3, whose optional "Regenerate note"
+button is the one live call and needs OPENAI_API_KEY. Style follows the Project 1 app.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import streamlit as st
 
 from src import config
 from src.audit_log import latest_decision_by_alert, read_decisions, record_decision
+from src.note_writer import typology_text
 from src.totals import format_totals
 from src.ui_components import (
     OK_COLOUR,
@@ -18,8 +20,9 @@ from src.ui_components import (
     SYNTHETIC_NOTE,
     badge,
     highlight_cited,
-    kpi_card,
+    number_cards,
     show_table,
+    student_section,
 )
 from src.ui_data import (
     cited_ids,
@@ -32,7 +35,7 @@ from src.ui_graph import build_figure, graph_edges
 
 FOLDER = config.ARTIFACTS_DIR
 PAGES = ["Alert queue", "Alert detail", "Audit log", "Metrics"]
-SORT_CHOICES = ["priority_rank", "score", "typology_hint", "review"]
+SORT_CHOICES = ["priority_rank", "score", "suggested_typology", "review"]
 SCORE_COLUMN = {"score": st.column_config.NumberColumn("score", format="%.3f")}
 
 st.set_page_config(page_title="Explainable AML pipeline", layout="wide")
@@ -63,17 +66,20 @@ def selected_alert(queue: pd.DataFrame) -> str:
 def page_queue(queue: pd.DataFrame) -> None:
     st.header("Alert queue")
     st.caption(
-        "Priority is the detector score order. Typology is a hint, not a result."
+        "Priority is the detector score order. The typology is a suggestion; "
+        "the analyst confirms it."
     )
     flag = st.radio("Show", ["all", "needs review only", "clean only"], horizontal=True)
-    hints = st.multiselect("Typology hint", sorted(queue["typology_hint"].unique()))
+    hints = st.multiselect(
+        "Suggested typology", sorted(queue["suggested_typology"].unique())
+    )
     sort = st.selectbox("Sort by", SORT_CHOICES)
     view = queue.copy()
     if flag != "all":
         wanted = review_label(flag == "needs review only")
         view = view[view["review"] == wanted]
     if hints:
-        view = view[view["typology_hint"].isin(hints)]
+        view = view[view["suggested_typology"].isin(hints)]
     view = view.sort_values(sort, ascending=sort != "score")
     view["decision"] = view["alert_id"].map(latest_decision_by_alert()).fillna("")
     st.caption("%d of %d alerts" % (len(view), len(queue)))
@@ -100,7 +106,7 @@ def show_note(bundle: dict) -> None:
     note = record["note"] if record else None
     if not note:
         return
-    st.markdown("**Typology hint:** %s (a hint, not a result)" % note["typology"])
+    st.markdown("**%s**" % typology_text(note))
     st.write(note["reason"])
     st.markdown("**Red flags**")
     for flag in note["red_flags"]:
@@ -115,7 +121,13 @@ def show_note(bundle: dict) -> None:
 
 
 def regenerate_button(alert_id: str, bundle: dict) -> None:
-    """Optional live call; the saved note stays if it fails."""
+    """Optional live call (V1 writer only); the saved note stays if it fails."""
+    if config.NOTE_WRITER != "prompt_v3":
+        st.caption(
+            "Notes by the fine-tuned student (typology2); regenerating needs a "
+            "GPU: python -m src.note_writer generate."
+        )
+        return
     if not st.button("Regenerate note (calls OpenAI)"):
         return
     from src.llm_client import make_client
@@ -124,7 +136,10 @@ def regenerate_button(alert_id: str, bundle: dict) -> None:
     try:
         client = make_client()
         record = note_for_alert(
-            client, bundle["alert"], bundle["evidence"], config.UI_NOTE_VERSION
+            client,
+            bundle["alert"],
+            bundle["evidence"],
+            config.REGENERATE_PROMPT_VERSION,
         )
     except Exception as error:  # no key or no network: say so, keep the saved note
         st.error("Could not regenerate: %s" % error)
@@ -191,12 +206,6 @@ def page_audit_log() -> None:
         st.caption("No decisions yet. Decide on the Alert detail page.")
 
 
-def number_cards(items: list) -> None:
-    for column, (label, value, sub) in zip(st.columns(len(items)), items):
-        with column:
-            kpi_card(label, value, sub)
-
-
 def detector_section(step1: dict) -> None:
     test = step1["test_metrics"]
     st.subheader("Detector (LightGBM, whole test period)")
@@ -238,6 +247,9 @@ def page_metrics() -> None:
         detector_section(step1)
     if step2:
         notes_section(step2)
+    final = load_json_if_present(FOLDER / config.FINAL_COMPARISON_FILE)
+    if final:
+        student_section(final)
     st.subheader("Read these numbers with care")
     st.markdown(
         "- All data is IBM's **synthetic** LI-Small set; nothing here says how a real "
@@ -246,8 +258,10 @@ def page_metrics() -> None:
         "- **ACH is a known shortcut in the IBM synthetic data**: the payment format "
         "is often the strongest reason, so a high score may reflect how the data was "
         "generated, not real-world suspicion.\n"
-        "- The typology is a **hint**: about one in four is right, and the LLM never "
-        'said "unclear" on a false alarm.\n'
+        "- The typology is a **suggestion** the analyst confirms: the student is right "
+        "on 18 of 37 visible patterns (n=37: 95% interval about 33-64%) and weak on "
+        "the two-stage patterns (SCATTER_GATHER 1/11). V1 prompt v3 was right on "
+        '12/37 and never said "unclear" on a false alarm.\n'
         "- An earlier version let the LLM decide: escalate precision 0.27, the same as "
         "the alert base rate 0.26. The decision now belongs to the analyst.\n"
         "- The fact check shows a cited id, account or amount exists in the evidence, "

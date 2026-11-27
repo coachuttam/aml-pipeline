@@ -5,6 +5,7 @@ __pycache__/
 # No data, models or secrets in git (AGENTS.md rule 4).
 cache/
 data/
+models/
 artifacts/*
 !artifacts/.gitkeep
 *.csv

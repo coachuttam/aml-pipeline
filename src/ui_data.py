@@ -55,7 +55,7 @@ def reason_line(reason: Dict) -> str:
 
 
 def load_queue(folder: Path) -> pd.DataFrame:
-    """The alert queue: priority, score, top reason, typology hint, review flag."""
+    """The alert queue: priority, score, top reason, suggested typology, review."""
     alerts = pd.read_parquet(folder / config.ALERTS_FILE)
     notes = load_notes(folder)
     size = test_period_size(folder)
@@ -70,7 +70,7 @@ def load_queue(folder: Path) -> pd.DataFrame:
                 "score": float(alert["score"]),
                 "score_rank": top_percent_text(int(alert["rank"]), size),
                 "top_reason": reason_line(display_reasons(alert)[0]),
-                "typology_hint": note["typology"] if note else "no note",
+                "suggested_typology": note["typology"] if note else "no note",
                 "review": review_label(bool(record.get("needs_review", True))),
             }
         )

@@ -58,3 +58,31 @@ def highlight_cited(table: pd.DataFrame, cited: List[int]):
         ] * len(row)
 
     return table.style.apply(colour, axis=1).format({"amount_paid": "{:,.2f}"})
+
+
+def number_cards(items: list) -> None:
+    """A row of KPI cards: (label, value, sub-line) each."""
+    for column, (label, value, sub) in zip(st.columns(len(items)), items):
+        with column:
+            kpi_card(label, value, sub)
+
+
+def student_section(report: dict) -> None:
+    """The final test of the V2 student (run once), beside V1 prompt v3."""
+    student, v1 = report["student"], report["v1_prompt_v3"]
+    st.subheader("Case notes: V2 student (typology2), final test run once")
+
+    def share(scores: dict, key: str) -> str:
+        return "%d/%d" % (scores[key]["count"], scores[key]["of"])
+
+    number_cards(
+        [
+            ("Typology right", share(student, "typology_accuracy_visible"),
+             "visible patterns; V1 v3 " + share(v1, "typology_accuracy_visible")),
+            ('"unclear" on false alarms', share(student, "unclear_rate_false_alarms"),
+             "V1 v3 " + share(v1, "unclear_rate_false_alarms")),
+            ("Invented facts", share(student, "invented_facts_per_claim"),
+             "per claim; V1 v3 " + share(v1, "invented_facts_per_claim")),
+            ("JSON valid", share(student, "json_validity"), "200 test alerts"),
+        ]
+    )  # fmt: skip
