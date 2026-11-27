@@ -49,10 +49,10 @@ LI-Small is harder than HI-Small: it has far fewer laundering transactions per n
 
 | Project | Contribution |
 | --- | --- |
-| 1. aml-alert-investigator | Qwen2.5-1.5B QLoRA on synthetic alerts that gives a typology, risk and reason, inside a 6-step workflow with an audit log (macro-F1 1.000 test, 0.936 held-out). It is the origin of the analyst workflow and the audit log. |
-| 2. aml-ibm-experiment | LightGBM ranking on IBM HI-Small against rules. It gets 28.3% recall with 715 alerts, where the rules raise 167,778 (F1 0.510). It adds SHAP reasons and template case notes, the basis of the detector, the reason codes and the V1 note. |
-| 3. Fine-tuned case-note student | The first attempt (aml-ibm-finetune) got the typology right 12.0% of the time, against 36.1% for simple graph checks. That led to the reshaped, evidence-only student here: Qwen2.5-7B LoRA trained on teacher notes from HI-Small, the V2 note writer, offline as a GGUF. |
-| 4. GNN transfer ([aml-gnn-transfer](../aml-gnn-transfer)) | The LightGBM baseline config and the fine-tuned PNA graph model behind the second opinion |
+| 1. [aml-alert-investigator](https://github.com/coachuttam/aml-alert-investigator) | Qwen2.5-1.5B QLoRA on synthetic alerts that gives a typology, risk and reason, inside a 6-step workflow with an audit log (macro-F1 1.000 test, 0.936 held-out). It is the origin of the analyst workflow and the audit log. |
+| 2. [aml-ibm-experiment](https://github.com/coachuttam/aml-ibm-experiment) | LightGBM ranking on IBM HI-Small against rules. It gets 28.3% recall with 715 alerts, where the rules raise 167,778 (F1 0.510). It adds SHAP reasons and template case notes, the basis of the detector, the reason codes and the V1 note. |
+| 3. Fine-tuned case-note student ([aml-ibm-finetune](https://github.com/coachuttam/aml-ibm-finetune), then this repo) | The first attempt (aml-ibm-finetune) got the typology right 12.0% of the time, against 36.1% for simple graph checks. That led to the reshaped, evidence-only student here: Qwen2.5-7B LoRA trained on teacher notes from HI-Small, the V2 note writer, offline as a GGUF. |
+| 4. GNN transfer ([aml-gnn-transfer](https://github.com/coachuttam/aml-gnn-transfer)) | The LightGBM baseline config and the fine-tuned PNA graph model behind the second opinion |
 
 ## Honest limits
 
@@ -87,13 +87,22 @@ AML_PIPELINE_NOTE_WRITER=ollama streamlit run app.py       # UI that writes new 
 
 The UI reads saved files in `artifacts/`, so only the commands that write notes need a GPU or Ollama. See [Run](#run) for details.
 
+## Data and models
+
+- **Data:** IBM's synthetic AMLworld transactions ([Kaggle: IBM Transactions for Anti Money Laundering](https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml)). None of it is in this repo.
+  - Download `LI-Small_Trans.csv` and `LI-Small_Patterns.txt` (the pipeline and its test) and `HI-Small_Trans.csv` and `HI-Small_Patterns.txt` (the student's training alerts), for example with `kaggle datasets download ealtman2019/ibm-transactions-for-anti-money-laundering-aml`.
+  - The pipeline reads LI-Small from `~/aml-gnn-transfer/data/Small_LI/` by default. Set `AML_PIPELINE_RAW_CSV` to use another path.
+- **Teacher notes:** the student's training notes were written by `gpt-4.1-mini` (OpenAI API) from HI-Small alerts. The code that makes them is here (`src/teacher.py`); the notes themselves are not published.
+- **Models not published:** the student's LoRA adapter, the Q4_K_M GGUF and the GNN checkpoint are not in this repo or anywhere public. The notebooks show how to rebuild them.
+- **Research prototype only:** built on synthetic data to study explainable triage. It is not a product, not validated on real bank data, and not for live AML decisions or regulatory filing.
+
 ---
 
 # Detailed results
 
 ## Step 1 result
 
-The detector is the final LightGBM from [aml-gnn-transfer](../aml-gnn-transfer) (Project 4; Phase E, a simple baseline). Retrained here, it reproduces that record exactly (test minority F1 0.2155, PR-AUC 0.1175).
+The detector is the final LightGBM from [aml-gnn-transfer](https://github.com/coachuttam/aml-gnn-transfer) (Project 4; Phase E, a simple baseline). Retrained here, it reproduces that record exactly (test minority F1 0.2155, PR-AUC 0.1175).
 
 - **200 alerts**, the highest-scored test transactions, each with a score and five SHAP reason codes: `artifacts/alerts.parquet`.
 - **53 of the 200 (26.5%) are laundering** (precision@100 over the whole test period is 0.44). The validation threshold flags 479 test transactions in all; the top 200 are all above it.
