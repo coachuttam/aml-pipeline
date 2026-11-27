@@ -50,14 +50,12 @@ The draft builder would choose a jurisdiction (`config.STR_JURISDICTION = "UAE" 
 
 ## 3. Offline GGUF / Ollama demo
 
-**Built, not yet run.** The pieces:
+**Done.** The pieces:
 - `notebooks/gguf_ollama_colab.ipynb`: merge the adapter, convert to GGUF, quantise to Q4_K_M; only the GGUF goes to Drive.
 - `ollama/Modelfile`, `src/ollama_generate.py`, and `NOTE_WRITER="ollama"` in the UI and in `src/note_writer`.
 - `src/quant_check.py`: the dev-only check, with pass rules in `config.QUANT_*`.
 - `docs/OFFLINE_DEMO.md`: the Mac steps.
 
-Still to do:
-1. Run the notebook.
-2. Run the dev check.
-3. Time one note on the Mac (8 GB M2).
-4. Record the numbers in the README.
+Results (in the README):
+- **Dev check: passed.** JSON 50/50, 0/1189 invented facts, typology agreement 40/50 = 0.80 (just at the bar), typology right 1/19 against the adapter's 3/19.
+- **Mac M2, 8 GB:** A0001 took 292 s for 708 tokens with a clean fact check. It works with Wi-Fi off.

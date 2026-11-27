@@ -5,7 +5,7 @@ The `typology2` student (Project 3) runs as a 4.7 GB Q4_K_M GGUF on a local Olla
 **Your Mac:** Apple M2 with **8 GB** of memory and 21 GB free disk.
 - Memory, not disk, is the limit. The model takes about 4.7 GB and its 8,192-token context about 0.25 GB with the cache settings in step 2.
 - Close the browser and other large apps while it runs.
-- Expect roughly **2-4 minutes per note**: about 6,000 prompt tokens, then about 900 tokens written at laptop speed. This is an estimate; step 5 measures it.
+- **Measured: about 5 minutes per note.** A0001 took 292 s for 708 output tokens (before the run, the estimate was 2-4 min). See "Speed tips" below.
 
 **Disk:** peaks at about 9.5 GB while creating (the downloaded GGUF plus Ollama's copy). It drops to 4.7 GB after the download is deleted in step 4.
 
@@ -25,6 +25,15 @@ The `typology2` student (Project 3) runs as a 4.7 GB Q4_K_M GGUF on a local Olla
    - same typology: on at least 80% of alerts.
 
    Test stays the adapter's single scored run.
+
+   **Result (run once): passed.**
+   - Valid JSON: 50/50, the same as the adapter.
+   - Invented facts: 0/1189, against the adapter's 18/1391.
+   - Same typology as the adapter: 40/50 = 0.80, exactly the bar.
+   - Typology right on visible patterns: 1/19, against the adapter's 3/19.
+   - No note is identical to the adapter's.
+
+   The GGUF is a close but different model. It is fine for the demo, but the reported numbers stay the adapter's.
 
 ## 1. Install Ollama
 
@@ -75,6 +84,10 @@ python -m src.note_writer ollama --alert A0001
 
 It builds the student's input from the evidence (no labels) and asks Ollama. If the answer is invalid, it retries once, as on Colab. Then it fact-checks the note and prints it with one line like `A0001: 140 s, 912 output tokens, fact check: clean`. The answer is kept in `data/finetune/ollama_demo_raw.jsonl` as demo output; it is never scored.
 
+**Measured on the M2 (8 GB), Wi-Fi off:** `A0001: 292 s, 708 output tokens, fact check: clean`.
+- The note suggests typology **RANDOM**, where the adapter's saved note says *unclear*. That is the kind of shift the dev check measured (10 of 50 typologies differ).
+- The analyst confirms or ignores the suggestion as usual.
+
 ## 6. In the UI
 
 ```bash
@@ -82,6 +95,16 @@ AML_PIPELINE_NOTE_WRITER=ollama streamlit run app.py
 ```
 
 The saved notes are still the adapter's. On an alert's page, **"Regenerate note (local Ollama, offline)"** writes a new one with the GGUF, fact-checked the same way. A decision made on it is logged with note version `v2-student-typology2-q4km`.
+
+It worked with Wi-Fi off.
+
+## Speed tips for a live demo
+
+- **Close what you don't need:** browser tabs, mail, chat apps. With 8 GB, the model (4.7 GB) and macOS fill the memory. Any swapping makes a note much slower than 5 min.
+- **Keep the memory-saving server settings** from step 2.
+- **Warm it up:** run step 5 once before the audience arrives, so the model is already loaded.
+- **Start the note early:** click "Regenerate note" first, then talk through the evidence table, the network graph and the goAML draft while it writes (about 5 min).
+- **Have the saved note to fall back on:** the adapter's note stays on screen until you regenerate.
 
 ## Removing it
 

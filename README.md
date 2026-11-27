@@ -189,7 +189,7 @@ The `typology2` student was run once on the 200 LI-Small test alerts (v1 evidenc
 
 **The student is now the V2 note writer.** `config.NOTE_WRITER = "student"` (the default; `AML_PIPELINE_NOTE_WRITER=prompt_v3` switches back to V1). The UI reads `artifacts/notes_student.json` and shows "Suggested typology: X (fine-tuned student; analyst confirms)". The audit log records `v2-student-typology2` with each decision. For new alerts, `python -m src.note_writer inputs | generate | notes`: `generate` needs a GPU and the adapter at `config.STUDENT_ADAPTER_DIR` (`models/`, git-ignored; or set `AML_PIPELINE_STUDENT_ADAPTER`), and `notes` fact-checks each answer against its own evidence without reading ground truth. The metrics page shows the final test beside V1.
 
-**Remaining V2 steps** (short plan in [docs/V2_PLAN.md](docs/V2_PLAN.md)): 1. GNN scores and edge colours (done); 2. goAML draft (done); 3. offline GGUF / Ollama demo (built, not yet run).
+**Remaining V2 steps** (short plan in [docs/V2_PLAN.md](docs/V2_PLAN.md)): 1. GNN scores and edge colours (done); 2. goAML draft (done); 3. offline GGUF / Ollama demo (done; runs on an 8 GB M2 at about 5 min per note).
 
 ## V2 step 1: GNN second opinion (export ready, not run)
 
@@ -241,7 +241,7 @@ All runs are `completed`. The chosen model is the PNA with 100% of labels, **cho
   - Transfer-mode and funds codes need the FIU's lookup lists.
   - The FIU-IND (FINGate) adapter is planned, not built ([docs/V2_PLAN.md](docs/V2_PLAN.md)).
 
-## V2 step 3: offline demo with Ollama (built, not yet run)
+## V2 step 3: offline demo with Ollama
 
 The student runs on a laptop, without a GPU or internet, as one **Q4_K_M GGUF** (about 4.7 GB) served by Ollama. Its notes go through the unchanged fact check. Step-by-step guide: [docs/OFFLINE_DEMO.md](docs/OFFLINE_DEMO.md).
 
@@ -254,9 +254,31 @@ The student runs on a laptop, without a GPU or internet, as one **Q4_K_M GGUF** 
 - **Quantisation check, dev only** (`src/quant_check.py`): the GGUF's answers on the 50 dev alerts are compared with the adapter's.
   - Pass rules, fixed beforehand: valid JSON at most 2 below the adapter, invented facts per claim at most twice the adapter's (1.3%), and the same typology on at least 80% of alerts.
   - It refuses non-dev files. Test stays the adapter's single scored run.
+- **Result of the dev check (50 dev alerts, run once; test untouched):** it passed all three rules, but the typology rule only just.
+
+  | Dev, 50 alerts | Adapter (NF4 + LoRA) | Q4_K_M GGUF |
+  |---|---|---|
+  | Valid JSON | 50/50 | 50/50 |
+  | Invented facts / checked claims | 18/1391 (1.3%) | 0/1189 (0%) |
+  | Typology right on visible patterns | 3/19 | 1/19 |
+  | Same typology as the adapter | | 40/50 (0.80, the minimum to pass) |
+  | Identical notes | | 0/50 |
+
+  - **What this means:** the GGUF writes valid, fact-checked notes. It is a slightly different model, not a copy: no note is word for word the same, it makes fewer claims (1189 against 1391), and it changes the typology on 10 of 50 alerts. It gets fewer typologies right (1/19 against 3/19), but with 19 alerts that gap is two alerts.
+  - **What it doesn't show:** 0 invented facts on 1189 claims doesn't make it more factual than the adapter. Shorter notes give fewer chances to invent, and the sample is small.
+  - **Use:** the GGUF is the offline demo writer. The reported results (test, above) stay the adapter's.
+- **Mac run (Apple M2, 8 GB memory, Wi-Fi off), one test alert:**
+  - A0001 took **292 s** (about 5 min) for 708 output tokens. The fact check was clean.
+  - The GGUF suggested **RANDOM**; the adapter's saved note says *unclear*. This is the same kind of typology shift as on dev. The typology is a suggestion the analyst confirms, so the UI shows it with that label.
+  - The UI and "Regenerate note (local Ollama, offline)" both worked with Wi-Fi off.
+  - This alert was a demo; nothing on test was scored again.
+- **Speed tips for a live demo:**
+  - Close the browser tabs and other apps you don't need, because 8 GB is tight and swapping slows each note a lot.
+  - Start the server with `OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0`.
+  - Start the note early: click "Regenerate" first, then talk through the evidence, the graph and the goAML draft while it writes (about 5 min).
 - **Caveats:**
-  - The adapter was trained on a 4-bit NF4 base and is merged into bf16, then quantised again. That is why the dev check exists.
-  - The target Mac has 8 GB of memory, so the guide uses a q8_0 context cache and expects about 2-4 min per note (to be measured).
+  - The adapter was trained on a 4-bit NF4 base and is merged into bf16, then quantised again. That is why the dev check exists, and why the typologies differ.
+  - The timing comes from one alert on one machine.
 
 ## Run
 
