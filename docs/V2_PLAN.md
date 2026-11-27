@@ -4,7 +4,7 @@ The note writer is done: the frozen `typology2` student (final test run once, se
 
 ## 1. GNN scores and edge colours
 
-**Done (export, not yet run):** `notebooks/gnn_scores_colab.ipynb` with `src/gnn_export.py` scores every LI-Small validation and test transaction with `pna_finetune_f1.0_s0` and writes `gnn_scores.parquet` (transaction_id, score, period; no label). Copy it to `artifacts/` (git-ignored).
+**Done (export run on Colab, join and UI built; see README):** `notebooks/gnn_scores_colab.ipynb` with `src/gnn_export.py` scores every LI-Small validation and test transaction with `pna_finetune_f1.0_s0` and writes `gnn_scores.parquet` (transaction_id, score, period; no label). Copy it to `artifacts/` (git-ignored).
 
 **Join** (`src/gnn_scores.py`, CPU, with tests on made-up data):
 

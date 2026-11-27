@@ -86,3 +86,28 @@ def student_section(report: dict) -> None:
             ("JSON valid", share(student, "json_validity"), "200 test alerts"),
         ]
     )  # fmt: skip
+
+
+def network_section(bundle: dict) -> None:
+    """The evidence network, coloured by note citations or by GNN score."""
+    from src.ui_data import cited_ids
+    from src.ui_graph import CITATIONS, GNN, build_figure, graph_edges
+
+    st.subheader("Network")
+    choices = [CITATIONS, GNN] if bundle["gnn"] is not None else [CITATIONS]
+    colour_by = st.radio("Colour edges by", choices, horizontal=True)
+    edges = graph_edges(bundle["evidence"], cited_ids(bundle["record"]), bundle["gnn"])
+    st.plotly_chart(build_figure(edges, colour_by), use_container_width=True)
+    if colour_by == GNN:
+        st.caption(
+            "Light to dark: GNN laundering score 0-1; thicker from %.3f (threshold "
+            "chosen on validation). Grey dashed: not scored, because the transaction "
+            "is in the GNN's training period and a score would reflect labels it "
+            "learned. Red outline: the alert. A second opinion only."
+            % config.GNN_HIGH_THRESHOLD
+        )
+    else:
+        st.caption(
+            "Accounts are nodes, transactions are edges. Red: the alert; "
+            "orange: cited by the note. Hover an edge for amount, currency, time."
+        )

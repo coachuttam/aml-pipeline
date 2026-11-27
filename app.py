@@ -12,6 +12,7 @@ import streamlit as st
 
 from src import config
 from src.audit_log import latest_decision_by_alert, read_decisions, record_decision
+from src.gnn_scores import load_gnn_scores
 from src.note_writer import typology_text
 from src.totals import format_totals
 from src.ui_components import (
@@ -20,6 +21,7 @@ from src.ui_components import (
     SYNTHETIC_NOTE,
     badge,
     highlight_cited,
+    network_section,
     number_cards,
     show_table,
     student_section,
@@ -31,24 +33,35 @@ from src.ui_data import (
     load_queue,
     review_label,
 )
-from src.ui_graph import build_figure, graph_edges
 
 FOLDER = config.ARTIFACTS_DIR
 PAGES = ["Alert queue", "Alert detail", "Audit log", "Metrics"]
-SORT_CHOICES = ["priority_rank", "score", "suggested_typology", "review"]
-SCORE_COLUMN = {"score": st.column_config.NumberColumn("score", format="%.3f")}
+SORT_CHOICES = ["priority_rank", "score", "gnn_score", "suggested_typology", "review"]
+HIGH_FIRST = ("score", "gnn_score")  # sorted descending; the rest ascending
+SCORE_COLUMN = {
+    "score": st.column_config.NumberColumn("score", format="%.3f"),
+    "gnn_score": st.column_config.NumberColumn(
+        "GNN score (2nd opinion)", format="%.3f"
+    ),
+}
 
 st.set_page_config(page_title="Explainable AML pipeline", layout="wide")
 
 
+@st.cache_resource(show_spinner="Loading GNN scores...")
+def get_gnn():
+    """The exported GNN scores (None without artifacts/gnn_scores.parquet)."""
+    return load_gnn_scores(FOLDER)
+
+
 @st.cache_data(show_spinner="Loading alerts...")
 def get_queue() -> pd.DataFrame:
-    return load_queue(FOLDER)
+    return load_queue(FOLDER, get_gnn())
 
 
 def get_bundle(alert_id: str) -> dict:
     """Saved bundle, with a regenerated note on top if the analyst asked for one."""
-    bundle = load_bundle(FOLDER, alert_id)
+    bundle = load_bundle(FOLDER, alert_id, get_gnn())
     regenerated = st.session_state.get("regenerated", {}).get(alert_id)
     if regenerated:
         bundle["record"] = regenerated
@@ -66,8 +79,9 @@ def selected_alert(queue: pd.DataFrame) -> str:
 def page_queue(queue: pd.DataFrame) -> None:
     st.header("Alert queue")
     st.caption(
-        "Priority is the detector score order. The typology is a suggestion; "
-        "the analyst confirms it."
+        "Priority is the detector (LightGBM) score order. The GNN score is a second "
+        "opinion and never changes the order. The typology is a suggestion; the "
+        "analyst confirms it."
     )
     flag = st.radio("Show", ["all", "needs review only", "clean only"], horizontal=True)
     hints = st.multiselect(
@@ -80,7 +94,7 @@ def page_queue(queue: pd.DataFrame) -> None:
         view = view[view["review"] == wanted]
     if hints:
         view = view[view["suggested_typology"].isin(hints)]
-    view = view.sort_values(sort, ascending=sort != "score")
+    view = view.sort_values(sort, ascending=sort not in HIGH_FIRST, na_position="last")
     view["decision"] = view["alert_id"].map(latest_decision_by_alert()).fillna("")
     st.caption("%d of %d alerts" % (len(view), len(queue)))
     show_table(view, column_config=SCORE_COLUMN)
@@ -156,6 +170,9 @@ def page_detail(alert_id: str) -> None:
         "Priority rank %d  ·  %s of all test transactions by score"
         % (alert["rank"], bundle["score_rank"])
     )
+    st.markdown(
+        "**%s.** Priority is set by the LightGBM score." % bundle["second_opinion"]
+    )
     left, right = st.columns([3, 2])
     with left:
         st.subheader("Why the detector flagged it")
@@ -173,13 +190,7 @@ def page_detail(alert_id: str) -> None:
         st.subheader("Case note")
         show_note(bundle)
         regenerate_button(alert_id, bundle)
-        st.subheader("Network")
-        edges = graph_edges(bundle["evidence"], cited_ids(bundle["record"]))
-        st.plotly_chart(build_figure(edges), use_container_width=True)
-        st.caption(
-            "Accounts are nodes, transactions are edges. Red: the alert; "
-            "orange: cited by the note. Hover an edge for amount, currency, time."
-        )
+        network_section(bundle)
     decision_form(alert_id, bundle)
 
 
