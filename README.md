@@ -189,7 +189,7 @@ The `typology2` student was run once on the 200 LI-Small test alerts (v1 evidenc
 
 **The student is now the V2 note writer.** `config.NOTE_WRITER = "student"` (the default; `AML_PIPELINE_NOTE_WRITER=prompt_v3` switches back to V1). The UI reads `artifacts/notes_student.json` and shows "Suggested typology: X (fine-tuned student; analyst confirms)". The audit log records `v2-student-typology2` with each decision. For new alerts, `python -m src.note_writer inputs | generate | notes`: `generate` needs a GPU and the adapter at `config.STUDENT_ADAPTER_DIR` (`models/`, git-ignored; or set `AML_PIPELINE_STUDENT_ADAPTER`), and `notes` fact-checks each answer against its own evidence without reading ground truth. The metrics page shows the final test beside V1.
 
-**Remaining V2 steps** (short plan in [docs/V2_PLAN.md](docs/V2_PLAN.md)): 1. GNN scores and edge colours; 2. goAML draft; 3. offline GGUF / Ollama demo.
+**Remaining V2 steps** (short plan in [docs/V2_PLAN.md](docs/V2_PLAN.md)): 1. GNN scores and edge colours (done); 2. goAML draft (done); 3. offline GGUF / Ollama demo.
 
 ## V2 step 1: GNN second opinion (export ready, not run)
 
@@ -219,6 +219,25 @@ All runs are `completed`. The chosen model is the PNA with 100% of labels, **cho
 - Without `artifacts/gnn_scores.parquet` the UI works as before.
 
 **Design:** see [docs/V2_PLAN.md](docs/V2_PLAN.md). LightGBM keeps the priority; the GNN is a second opinion in the header, the queue, the evidence table and an optional edge colouring with a legend. 1,663 of 10,182 evidence rows (16%) fall in the GNN's training period and stay unscored (grey), because their scores would reflect labels the model was trained on.
+
+## V2 step 2: goAML-style STR draft (UAE first)
+
+**This is a goAML-style draft, not a certified UAE FIU schema. It is never filed automatically.** An alert gets a "Draft goAML report" button only when the analyst's latest decision is "escalate". When escalating, the analyst can confirm the suggested typology with a checkbox, and only a confirmed typology goes into the draft (as a `report_indicators/indicator`).
+
+- **Parts** (`src/goaml_draft.py`):
+  - **Header:** reporting entity (`rentity_id`, branch, reporting person, location), `submission_code` E and `report_code` STR, the alert id as `entity_reference`, and local currency AED.
+  - **Reason:** the case note's reason and red flags plus the analyst's comment, capped at 4,000 characters.
+  - **Transactions:** the alert transaction, then each cited evidence row in time order. Each has its date, payment format and, for both sides, the original currency and amount and the bank id and account number.
+  - **Report parties:** the note's key accounts.
+- **Missing data:**
+  - What the pipeline cannot know is written as `MISSING: <what>`: KYC names and countries, institution names, SWIFT, reporting entity id and address, FIU codes for funds type and transfer mode, AED amounts and exchange rates.
+  - The UI lists every kind with its count and where it occurs. A three-transaction draft has 19 kinds; A0001's has 62 placeholders.
+- **Schema:** `docs/goaml_style_draft.xsd` is our own, checked with lxml (`src/goaml_check.py`). It borrows goAML's element names but is not the UNODC or UAE FIU schema. The notice is in the XML twice, as a comment and as a `draft_notice` element the schema requires.
+- **UI:** the draft section sits under the decision form. It shows the schema result, the missing-fields table, a warning if the note failed the fact check, the XML preview and the download (`goaml_style_draft_<alert>.xml`). Each draft adds a `goaml_draft` line to the audit log, with the placeholders left and the typology included. Draft lines do not count as decisions.
+- **Limits:**
+  - IBM's synthetic data has no customers, so every party detail is a placeholder.
+  - Transfer-mode and funds codes need the FIU's lookup lists.
+  - The FIU-IND (FINGate) adapter is planned, not built ([docs/V2_PLAN.md](docs/V2_PLAN.md)).
 
 ## Run
 

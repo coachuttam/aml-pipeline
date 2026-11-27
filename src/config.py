@@ -261,3 +261,13 @@ GNN_ALERT_OUTLINE_COLOUR = "#00c8ff"  # cyan: red already means a high GNN score
 UNSCORED_EDGE_COLOUR = "#bdbdbd"  # grey, drawn dashed: no GNN score
 GNN_HIGH_EDGE_WIDTH = 4  # edges at or above the threshold are drawn thicker
 GNN_EDGE_WIDTH = 2
+
+# V2 step 2: goAML-style STR draft (UAE first). Never filed automatically.
+GOAML_SCHEMA_FILE = PROJECT_ROOT / "docs" / "goaml_style_draft.xsd"  # our own schema
+GOAML_DRAFT_NOTICE = (
+    "goAML-style draft, not a certified UAE FIU schema. Prepared from an escalated "
+    "alert for an analyst to complete and file; never filed automatically."
+)
+GOAML_LOCAL_CURRENCY = "AED"  # UAE first: amount_local is in dirhams
+GOAML_MISSING_PREFIX = "MISSING: "  # marks a field the pipeline cannot know
+GOAML_REASON_MAX_CHARS = 4000  # keeps the reason readable; the FIU's limit may differ

@@ -1,7 +1,10 @@
 """The decision log: one JSON line per analyst decision, only ever appended to.
 
-Stored in artifacts/audit_log.jsonl (git-ignored). Each line has the time, alert id,
-decision (escalate or close), the analyst's comment and the note version shown.
+Stored in artifacts/audit_log.jsonl (git-ignored). A decision line has the time,
+alert id, decision (escalate or close), the analyst's comment, the note version shown
+and the typology the analyst confirmed (empty if none). A goAML draft line records
+that a draft was made for an escalated alert: event "goaml_draft", how many
+placeholders it still has and whether the typology went in.
 
 Example:
     record_decision("A0029", "close", "Looks like a payroll run", "v3")
@@ -29,8 +32,12 @@ def record_decision(
     comment: str,
     note_version: str,
     path: Optional[Path] = None,
+    typology_confirmed: str = "",
 ) -> Dict[str, str]:
-    """Append one decision; a decision other than escalate/close is refused."""
+    """Append one decision; a decision other than escalate/close is refused.
+
+    `typology_confirmed` is the suggested typology the analyst confirmed, if any.
+    """
     if decision not in config.DECISIONS:
         raise ValueError("decision must be one of %s" % (config.DECISIONS,))
     event = {
@@ -39,12 +46,29 @@ def record_decision(
         "decision": decision,
         "comment": comment.strip(),
         "note_version": note_version,
+        "typology_confirmed": typology_confirmed,
     }
+    return append(event, path)
+
+
+def append(event: Dict, path: Optional[Path] = None) -> Dict:
+    """Add one line to the log (the only way the log is written)."""
     path = path or default_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as log:
         log.write(json.dumps(event) + "\n")
     return event
+
+
+def record_draft(
+    alert_id: str, placeholders: int, typology: str, path: Optional[Path] = None
+) -> Dict:
+    """Log that a goAML-style draft was made (never filed by the pipeline)."""
+    return append({
+        "time": datetime.now().isoformat(timespec="seconds"), "alert_id": alert_id,
+        "event": "goaml_draft", "placeholders_left": placeholders,
+        "typology_included": typology,
+    }, path)  # fmt: skip
 
 
 def read_decisions(path: Optional[Path] = None) -> List[Dict[str, str]]:
@@ -56,6 +80,17 @@ def read_decisions(path: Optional[Path] = None) -> List[Dict[str, str]]:
     return [json.loads(line) for line in lines if line.strip()]
 
 
+def latest_decisions(path: Optional[Path] = None) -> Dict[str, Dict]:
+    """The most recent decision event for each alert id (draft lines skipped)."""
+    return {e["alert_id"]: e for e in read_decisions(path) if e.get("decision")}
+
+
 def latest_decision_by_alert(path: Optional[Path] = None) -> Dict[str, str]:
     """The most recent decision for each alert id."""
-    return {event["alert_id"]: event["decision"] for event in read_decisions(path)}
+    return {k: e["decision"] for k, e in latest_decisions(path).items()}
+
+
+def current_escalation(alert_id: str, path: Optional[Path] = None) -> Optional[Dict]:
+    """The decision event if the alert's latest decision is escalate, else None."""
+    event = latest_decisions(path).get(alert_id)
+    return event if event and event["decision"] == "escalate" else None

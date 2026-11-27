@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  goAML-STYLE DRAFT SCHEMA, written for this project. NOT a certified UAE FIU schema
+  and not the UNODC goAML schema. It borrows goAML's main element names (report,
+  rentity_id, report_code, reason, transaction, t_from / t_to, report_parties,
+  report_indicators) so a compliance officer recognises the parts, and checks that a
+  draft has them. A real filing must be re-keyed or mapped to the FIU's own schema.
+
+  Fields the pipeline cannot know (KYC, names, addresses, ids, FIU codes, local-
+  currency amounts) are strings that hold "MISSING: <what>" placeholders.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+
+  <xs:simpleType name="text">
+    <xs:restriction base="xs:string"><xs:minLength value="1"/></xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="currencyCode">
+    <xs:restriction base="xs:string"><xs:pattern value="[A-Z]{3}|MISSING: .+"/></xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="person">
+    <xs:sequence>
+      <xs:element name="first_name" type="text"/>
+      <xs:element name="last_name" type="text"/>
+      <xs:element name="email" type="text"/>
+      <xs:element name="occupation" type="text"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="address">
+    <xs:sequence>
+      <xs:element name="address_type" type="text"/>
+      <xs:element name="address" type="text"/>
+      <xs:element name="city" type="text"/>
+      <xs:element name="country_code" type="text"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="account">
+    <xs:sequence>
+      <xs:element name="institution_code" type="text"/>
+      <xs:element name="institution_name" type="text"/>
+      <xs:element name="swift" type="text"/>
+      <xs:element name="account" type="text"/>
+      <xs:element name="currency_code" type="currencyCode"/>
+      <xs:element name="signatory" type="text"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="foreignCurrency">
+    <xs:sequence>
+      <xs:element name="foreign_currency_code" type="currencyCode"/>
+      <xs:element name="foreign_amount" type="xs:decimal"/>
+      <xs:element name="foreign_exchange_rate" type="text"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="fromSide">
+    <xs:sequence>
+      <xs:element name="from_funds_code" type="text"/>
+      <xs:element name="from_foreign_currency" type="foreignCurrency"/>
+      <xs:element name="from_account" type="account"/>
+      <xs:element name="from_country" type="text"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="toSide">
+    <xs:sequence>
+      <xs:element name="to_funds_code" type="text"/>
+      <xs:element name="to_foreign_currency" type="foreignCurrency"/>
+      <xs:element name="to_account" type="account"/>
+      <xs:element name="to_country" type="text"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="transaction">
+    <xs:sequence>
+      <xs:element name="transactionnumber" type="text"/>
+      <xs:element name="internal_ref_number" type="text"/>
+      <xs:element name="transaction_location" type="text"/>
+      <xs:element name="transaction_description" type="text"/>
+      <xs:element name="date_transaction" type="xs:dateTime"/>
+      <xs:element name="transmode_code" type="text"/>
+      <xs:element name="amount_local" type="text"/>
+      <xs:element name="t_from" type="fromSide"/>
+      <xs:element name="t_to" type="toSide"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="reportParty">
+    <xs:sequence>
+      <xs:element name="account" type="account"/>
+      <xs:element name="significance" type="text"/>
+      <xs:element name="reason" type="text"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="report">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="draft_notice" type="text"/>
+        <xs:element name="rentity_id" type="text"/>
+        <xs:element name="rentity_branch" type="text"/>
+        <xs:element name="submission_code">
+          <xs:simpleType>
+            <xs:restriction base="xs:string"><xs:enumeration value="E"/></xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="report_code">
+          <xs:simpleType>
+            <xs:restriction base="xs:string"><xs:enumeration value="STR"/></xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="entity_reference" type="text"/>
+        <xs:element name="submission_date" type="xs:dateTime"/>
+        <xs:element name="currency_code_local" type="currencyCode"/>
+        <xs:element name="reporting_person" type="person"/>
+        <xs:element name="location" type="address"/>
+        <xs:element name="reason" type="text"/>
+        <xs:element name="action" type="text"/>
+        <xs:element name="transaction" type="transaction" maxOccurs="unbounded"/>
+        <xs:element name="report_parties">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="report_party" type="reportParty" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="report_indicators">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="indicator" type="text" minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

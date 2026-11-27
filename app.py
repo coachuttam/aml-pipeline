@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from src import config
-from src.audit_log import latest_decision_by_alert, read_decisions, record_decision
+from src.audit_log import latest_decision_by_alert, read_decisions
 from src.gnn_scores import load_gnn_scores
 from src.note_writer import typology_text
 from src.totals import format_totals
@@ -35,6 +35,7 @@ from src.ui_data import (
     load_queue,
     review_label,
 )
+from src.ui_goaml import decision_form
 
 FOLDER = config.ARTIFACTS_DIR
 PAGES = ["Alert queue", "Alert detail", "Audit log", "Metrics"]
@@ -191,21 +192,7 @@ def page_detail(alert_id: str) -> None:
         show_note(bundle)
         regenerate_button(alert_id, bundle)
     network_section(bundle)  # full width, below evidence and note
-    decision_form(alert_id, bundle)
-
-
-def decision_form(alert_id: str, bundle: dict) -> None:
-    """Escalate or close, with a comment, saved to the audit log."""
-    st.divider()
-    st.subheader("Your decision")
-    show_status(bundle["record"])
-    decision = st.radio(
-        "Decision", list(config.DECISIONS), horizontal=True, key="d" + alert_id
-    )
-    comment = st.text_area("Comment (why)", key="c" + alert_id)
-    if st.button("Save decision", key="s" + alert_id):
-        record_decision(alert_id, decision, comment, config.UI_NOTE_VERSION)
-        st.success("Saved %s for %s." % (decision, alert_id))
+    decision_form(alert_id, bundle, show_status)
 
 
 def page_audit_log() -> None:

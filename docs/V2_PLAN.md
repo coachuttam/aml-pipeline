@@ -36,11 +36,17 @@ The note writer is done: the frozen `typology2` student of Project 3 (final test
 
 These are stated with their n and are not used to choose anything.
 
-## 2. goAML draft
+## 2. goAML draft (UAE first)
 
-- **What:** `src/goaml_draft.py` turns an alert, its analyst decision (from the audit log) and the student note into a goAML-style STR **draft** in XML. It covers the reporting entity placeholder, the transactions (cited ids only), the accounts (key_accounts) and the reason for suspicion (the note's red flags plus the analyst's comment).
-- **Rules:** a draft is made only after the analyst escalates. The typology goes in only if the analyst confirmed it. It is validated against a trimmed goAML schema kept in `docs/`. Placeholders are marked, and the file is never filed automatically. Every value must trace back to the evidence (the same fact check).
-- **UI:** a "Download goAML draft" button on escalated alerts.
+**Done (see README):** `src/goaml_draft.py`, `src/goaml_check.py`, `docs/goaml_style_draft.xsd`, `src/ui_goaml.py`. Drafts are made only for escalated alerts, never filed, checked against our own schema, with placeholders listed, and every draft is logged.
+
+**Later: FIU-IND adapter (FINGate).** India's FIU takes STRs through FINGate in its own reporting format, not goAML. Plan an adapter, `src/fiu_ind_draft.py`, that maps the same inputs to that format:
+- the same inputs: escalation, note, cited evidence rows and key accounts;
+- INR as the local currency;
+- the same placeholder and missing-fields mechanism;
+- its own draft schema, labelled "not a certified FIU-IND format".
+
+The draft builder would choose a jurisdiction (`config.STR_JURISDICTION = "UAE" | "IN"`); the decision flow and the audit log stay the same. It is not built until the FIU-IND field list has been checked against the official specification.
 
 ## 3. Offline GGUF / Ollama demo
 
