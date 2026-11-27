@@ -4,8 +4,9 @@ Self-contained on purpose (no imports from this repo): it is copied to Google Dr
 and run in Colab next to a clone of aml-gnn-transfer, which is only read. From that
 repo it reuses the data loaders, the model builder and the checkpoint loading of
 `src/score_checkpoint.py`, so the model is rebuilt exactly as it was scored there.
-It adds the one thing that scorer does not keep: which transaction each score is
-for.
+It adds two things that scorer lacks: which transaction each score is for, and a
+score for every edge of the period (the scorer skips seed edges the neighbour
+sampler left out of their batch; add_missing_seed_edges puts them back).
 
     python gnn_export.py --gnn-repo /content/aml-gnn-transfer --output scores.parquet
 
@@ -17,10 +18,11 @@ sorted by time; that file's EdgeID column is the row of the raw CSV, the pipelin
 `transaction_id`. Port numbers are added without reordering edges, so row k of the
 formatted file is edge k.
 
-Output, one row per scored transaction: transaction_id, score (laundering
-probability) and period ("validation" or "test"). No label is written. As a check
-that the right model was loaded, validation and test F1 are recomputed from the
-scores and printed beside the recorded ones.
+Output, one row per transaction of the period: transaction_id, score (laundering
+probability), period ("validation" or "test") and added (the sampler had left the
+edge out of its own batch; see add_missing_seed_edges). No label is written. As a check
+that the right model was loaded, F1 on the sampled edges only (what the record
+covers) is compared with the record; F1 on all edges is printed beside it.
 """
 
 from __future__ import annotations
@@ -42,6 +44,7 @@ RECORDED = {"validation_f1": 0.33203883495145625, "test_f1": 0.3665065202470831,
             "threshold": 0.698430597782135}  # fmt: skip  # from the run record
 F1_TOLERANCE = 0.01  # neighbour sampling is random, so scores move slightly per run
 PERIODS = ("validation", "test")
+EDGE_TYPE = ("node", "to", "node")  # Multi-GNN's forward edges (reverse MP)
 
 
 def transaction_ids(positions: np.ndarray, edge_id_column: np.ndarray) -> np.ndarray:
@@ -49,22 +52,45 @@ def transaction_ids(positions: np.ndarray, edge_id_column: np.ndarray) -> np.nda
     return edge_id_column[positions]
 
 
-def require_all_scored(positions: np.ndarray, expected: np.ndarray) -> None:
+EXAMPLES = 5  # ids shown per kind of mismatch when the coverage check fails
+
+
+def coverage_report(positions: np.ndarray, expected: np.ndarray) -> Dict:
+    """Counts and a few examples: expected, scored, missing, extra, duplicates."""
+    values, counts = np.unique(positions, return_counts=True)
+    missing = np.setdiff1d(expected, values)
+    extra = np.setdiff1d(values, expected)
+    duplicates = values[counts > 1]
+    report: Dict = {"expected": int(len(expected)), "scored": int(len(positions))}
+    for name, ids in (("missing", missing), ("extra", extra),
+                      ("duplicates", duplicates)):  # fmt: skip
+        report[name] = int(len(ids))
+        report[name + "_examples"] = [int(i) for i in ids[:EXAMPLES]]
+    return report
+
+
+def require_all_scored(positions: np.ndarray, expected: np.ndarray) -> Dict:
     """Every edge of the period scored exactly once, and no other edge."""
-    if len(np.unique(positions)) != len(positions):
-        raise ValueError("An edge was scored twice")
-    if not np.array_equal(np.sort(positions), np.sort(expected)):
-        raise ValueError("Scored edges differ from the period's edges")
+    report = coverage_report(positions, expected)
+    print("Coverage:", report)
+    if report["missing"] or report["extra"] or report["duplicates"]:
+        raise ValueError("Scored edges differ from the period's edges: %s" % report)
+    return report
 
 
-def scores_table(periods: Dict[str, Tuple[np.ndarray, np.ndarray]], edge_ids):
-    """One table: transaction_id, score, period (no label)."""
+def scores_table(periods: Dict[str, Tuple[np.ndarray, ...]], edge_ids):
+    """One table: transaction_id, score, period, added (no label).
+
+    `added` is True where the neighbour sampler left the edge out of its own batch
+    and it was put back before scoring (see add_missing_seed_edges).
+    """
     import pandas as pd
 
     parts = [
         pd.DataFrame({"transaction_id": transaction_ids(positions, edge_ids),
-                      "score": scores.astype(np.float32), "period": name})
-        for name, (positions, scores) in periods.items()
+                      "score": scores.astype(np.float32), "period": name,
+                      "added": added.astype(bool)})
+        for name, (positions, scores, added) in periods.items()
     ]  # fmt: skip
     return pd.concat(parts, ignore_index=True)
 
@@ -77,10 +103,50 @@ def f1_check(recomputed: Dict[str, float]) -> Dict[str, str]:
     }
 
 
+def missing_seed_ids(seed_ids: np.ndarray, present_ids: np.ndarray) -> np.ndarray:
+    """Seed edges the neighbour sampler did not put in their own batch."""
+    return seed_ids[~np.isin(seed_ids, present_ids)].astype(np.int64)
+
+
+def to_batch_nodes(pairs: np.ndarray, batch_node_ids: np.ndarray) -> np.ndarray:
+    """Global account ids (2 x n) -> their positions among the batch's nodes."""
+    local = {int(node): i for i, node in enumerate(batch_node_ids)}
+    return np.vectorize(local.__getitem__, otypes=[np.int64])(pairs)
+
+
+def add_missing_seed_edges(batch, data, seed_ids, reverse: bool) -> np.ndarray:
+    """Put unsampled seed edges back into the batch; returns their ids.
+
+    LinkNeighborLoader starts from the seed's two accounts and samples a capped
+    number of their edges, so a busy account's own seed edge can be left out and
+    is then never scored. Multi-GNN's evaluate_hetero (train_util.py) adds such
+    edges back only for its Small_J / Small_Q data, and score_checkpoint.py in
+    aml-gnn-transfer does not, so its recorded F1 covers sampled edges only. This
+    is Multi-GNN's code, applied to LI-Small. The two accounts are always in the
+    batch (they are the seeds), so only the edge is added; as there, not its
+    reverse edge.
+    """
+    import torch
+
+    store, full = (batch[EDGE_TYPE], data[EDGE_TYPE]) if reverse else (batch, data)
+    present = store.edge_attr[:, 0].detach().cpu().numpy()
+    missing = missing_seed_ids(seed_ids.numpy(), present)
+    if len(missing):
+        node_ids = (batch["node"].n_id if reverse else batch.n_id).cpu().numpy()
+        rows = torch.from_numpy(missing)
+        pairs = full.edge_index[:, rows].cpu().numpy()
+        index = torch.from_numpy(to_batch_nodes(pairs, node_ids))
+        store.edge_index = torch.cat((store.edge_index, index), 1)
+        store.edge_attr = torch.cat((store.edge_attr, full.edge_attr[rows]), 0)
+        store.y = torch.cat((store.y, full.y[rows]), 0)
+    return missing
+
+
 def batch_positions_and_scores(batch, loader, inds, model, device, reverse: bool):
-    """Formatted-file rows, labels and probabilities of one batch's seed edges."""
+    """Rows, labels, probabilities and "added" flags of one batch's seed edges."""
+    import torch
+
     from src.score_checkpoint import (
-        EDGE_TYPE,
         score_batch_plain,
         score_batch_reverse,
         seed_edge_mask,
@@ -88,16 +154,20 @@ def batch_positions_and_scores(batch, loader, inds, model, device, reverse: bool
 
     forward = batch[EDGE_TYPE] if reverse else batch
     loader_attr = (loader.data[EDGE_TYPE] if reverse else loader.data).edge_attr
+    inds_cpu = inds.detach().cpu()
+    seed_ids = loader_attr.detach().cpu()[inds_cpu[forward.input_id.cpu()], 0]
+    added = add_missing_seed_edges(batch, loader.data, seed_ids, reverse)
     mask = seed_edge_mask(forward.edge_attr, forward.input_id, loader_attr, inds)
     # Column 0 is the edge's row, added by Multi-GNN; read it before it is dropped.
     positions = forward.edge_attr[mask, 0].detach().cpu().long()
     score_batch = score_batch_reverse if reverse else score_batch_plain
     truth, scores = score_batch(batch, loader, inds, model, device)
-    return positions, truth.cpu(), scores.cpu()
+    flags = torch.from_numpy(np.isin(positions.numpy(), added))
+    return positions, truth.cpu(), scores.cpu(), flags
 
 
 def collect_period(loader, inds, model, device, reverse: bool):
-    """Rows, labels and probabilities of every edge one loader scores."""
+    """Rows, labels, probabilities and "added" flags of every seed edge."""
     import torch
 
     parts = []
@@ -106,7 +176,7 @@ def collect_period(loader, inds, model, device, reverse: bool):
             parts.append(
                 batch_positions_and_scores(batch, loader, inds, model, device, reverse)
             )
-    return [torch.cat([p[i] for p in parts]).numpy() for i in range(3)]
+    return [torch.cat([p[i] for p in parts]).numpy() for i in range(4)]
 
 
 def load_model():
@@ -155,9 +225,12 @@ def main() -> None:
                "test": (data.test_loader, data.test_indices)}  # fmt: skip
     periods, labels = {}, {}
     for name, (loader, inds) in loaders.items():
-        positions, truth, scores = collect_period(loader, inds, model, device, reverse)
+        positions, truth, scores, added = collect_period(
+            loader, inds, model, device, reverse
+        )
         require_all_scored(positions, inds.detach().cpu().numpy())
-        periods[name], labels[name] = (positions, scores), truth
+        print("%s: %d of %d edges added back" % (name, added.sum(), len(added)))
+        periods[name], labels[name] = (positions, scores, added), truth
     report_f1(periods, labels)
     import pandas as pd
 
@@ -167,18 +240,29 @@ def main() -> None:
     print("Wrote %s" % output)
 
 
-def report_f1(periods: Dict, labels: Dict) -> None:
-    """Recompute validation and test F1 (threshold from validation) and compare."""
+def recomputed_f1(periods: Dict, labels: Dict, keep: Dict) -> Dict[str, float]:
+    """Validation and test F1 (threshold from validation) on the rows kept."""
     from src.metrics import score_run, score_validation
 
-    validation = (labels["validation"], periods["validation"][1])
-    test = (labels["test"], periods["test"][1])
-    recomputed = {
-        "validation_f1": score_validation(*validation).minority_f1,
-        "test_f1": score_run(*validation, *test).minority_f1,
-    }
-    print("Recomputed:", recomputed, "| record:", RECORDED)
-    print("Check:", f1_check(recomputed))
+    val = (labels["validation"][keep["validation"]],
+           periods["validation"][1][keep["validation"]])  # fmt: skip
+    test = (labels["test"][keep["test"]], periods["test"][1][keep["test"]])
+    return {"validation_f1": score_validation(*val).minority_f1,
+            "test_f1": score_run(*val, *test).minority_f1}  # fmt: skip
+
+
+def report_f1(periods: Dict, labels: Dict) -> None:
+    """F1 like the record (sampled edges only, as score_checkpoint scored) and on all.
+
+    The record never scored the edges added back, so only the sampled-only F1 is
+    compared with it; the all-edges F1 is printed for information.
+    """
+    sampled = {name: ~periods[name][2] for name in PERIODS}
+    everything = {name: np.ones(len(periods[name][2]), bool) for name in PERIODS}
+    like_record = recomputed_f1(periods, labels, sampled)
+    print("Sampled edges only:", like_record, "| record:", RECORDED)
+    print("Check:", f1_check(like_record))
+    print("All edges:", recomputed_f1(periods, labels, everything))
 
 
 if __name__ == "__main__":
