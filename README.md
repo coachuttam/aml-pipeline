@@ -228,12 +228,14 @@ All runs are `completed`. The chosen model is the PNA with 100% of labels, **cho
   - **Header:** reporting entity (`rentity_id`, branch, reporting person, location), `submission_code` E and `report_code` STR, the alert id as `entity_reference`, and local currency AED.
   - **Reason:** the case note's reason and red flags plus the analyst's comment, capped at 4,000 characters.
   - **Transactions:** the alert transaction, then each cited evidence row in time order. Each has its date, payment format and, for both sides, the original currency and amount and the bank id and account number.
-  - **Report parties:** the note's key accounts.
+  - **Report parties:** the note's key accounts. For a confirmed FAN_IN, the senders of the cited transactions are added; for a confirmed FAN_OUT, their receivers. An unconfirmed typology adds nothing. On A0002 (FAN_IN confirmed), that makes 1 key account + 8 senders.
+  - **AED amounts:** a USD row gets `amount_local` and `foreign_exchange_rate` at the dirham's USD peg (3.6725 AED per USD), and `internal_ref_number` says so. Other currencies stay `MISSING`, because their rate on the day is not in the data.
 - **Missing data:**
   - What the pipeline cannot know is written as `MISSING: <what>`: KYC names and countries, institution names, SWIFT, reporting entity id and address, FIU codes for funds type and transfer mode, AED amounts and exchange rates.
   - The UI lists every kind with its count and where it occurs. A three-transaction draft has 19 kinds; A0001's has 62 placeholders.
 - **Schema:** `docs/goaml_style_draft.xsd` is our own, checked with lxml (`src/goaml_check.py`). It borrows goAML's element names but is not the UNODC or UAE FIU schema. The notice is in the XML twice, as a comment and as a `draft_notice` element the schema requires.
 - **UI:** the draft section sits under the decision form. It shows the schema result, the missing-fields table, a warning if the note failed the fact check, the XML preview and the download (`goaml_style_draft_<alert>.xml`). Each draft adds a `goaml_draft` line to the audit log, with the placeholders left and the typology included. Draft lines do not count as decisions.
+- **Audit log:** the decision form shows the saved decision and whether the typology was confirmed. To reset a demo, run `python -m src.audit_log clear --yes` (command line only, not in the UI). It moves the log to `artifacts/audit_log_archive/` with a timestamp, so nothing is deleted.
 - **Limits:**
   - IBM's synthetic data has no customers, so every party detail is a placeholder.
   - Transfer-mode and funds codes need the FIU's lookup lists.

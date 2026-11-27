@@ -271,3 +271,7 @@ GOAML_DRAFT_NOTICE = (
 GOAML_LOCAL_CURRENCY = "AED"  # UAE first: amount_local is in dirhams
 GOAML_MISSING_PREFIX = "MISSING: "  # marks a field the pipeline cannot know
 GOAML_REASON_MAX_CHARS = 4000  # keeps the reason readable; the FIU's limit may differ
+AED_PER_USD = 3.6725  # UAE dirham peg to the US dollar (fixed since 1997)
+PEGGED_CURRENCY = "USD"  # only this currency's AED amount is filled; others MISSING
+GOAML_PARTY_ROLES = {"FAN_IN": "from_account", "FAN_OUT": "to_account"}  # by typology
+AUDIT_ARCHIVE_FOLDER = "audit_log_archive"  # in artifacts/: cleared demo logs go here

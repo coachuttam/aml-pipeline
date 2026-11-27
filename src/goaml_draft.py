@@ -3,11 +3,14 @@
 The draft has goAML's main parts: the reporting entity, report code STR, the reason
 (from the case note and the analyst's comment), one `transaction` per cited
 evidence row (the alert transaction always first), the note's key accounts as
-`report_parties`, and `report_indicators`. The typology goes in only if the analyst
-confirmed it when escalating.
+`report_parties` (plus fan members, below), and `report_indicators`. The typology
+goes in only if the analyst confirmed it when escalating.
 
 What the pipeline cannot know (KYC, names, addresses, institution ids, FIU codes,
-amounts in AED) is written as "MISSING: <what>", and `missing_fields` lists it for
+AED amounts of non-USD rows) is written as "MISSING: <what>"; USD rows get their AED
+amount at the dirham's USD peg (3.6725), noted in internal_ref_number. For a
+confirmed FAN_IN the cited senders, for a confirmed FAN_OUT the cited receivers, join
+the key accounts as report parties. and `missing_fields` lists it for
 the UI. Every value that is filled comes from the alert's evidence file, the note or
 the analyst. The schema is our own (docs/goaml_style_draft.xsd): a goAML-style draft,
 not a certified UAE FIU schema.
@@ -20,7 +23,7 @@ Example:
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from src import config
 from src.case_note_input import evidence_transactions
@@ -57,35 +60,63 @@ def add_account(parent: ET.Element, tag: str, account: str, currency: str) -> No
     add(block, "signatory", missing("account holder name (KYC)"))
 
 
+def side_money(item: Dict, side: str):
+    """(currency name, amount) paid (from) or received (to)."""
+    if side == "from":
+        return item["payment_currency"], item["amount_paid"]
+    return item["receiving_currency"], item["amount_received"]
+
+
+def pegged(currency: str) -> bool:
+    """Is this the currency the dirham is pegged to (so its AED amount is known)?"""
+    return currency_code(currency) == config.PEGGED_CURRENCY
+
+
 def add_side(parent: ET.Element, side: str, item: Dict) -> None:
     """t_from or t_to: funds code, original currency and amount, account, country."""
-    paid = side == "from"
+    currency, amount = side_money(item, side)
     block = ET.SubElement(parent, "t_" + side)
     add(block, side + "_funds_code", missing("funds type code (FIU list)"))
     money = ET.SubElement(block, side + "_foreign_currency")
-    currency = item["payment_currency" if paid else "receiving_currency"]
     add(money, "foreign_currency_code", currency_code(currency))
-    add(
-        money,
-        "foreign_amount",
-        "%.2f" % item["amount_paid" if paid else "amount_received"],
-    )
-    add(money, "foreign_exchange_rate", missing("rate to AED on the day"))
+    add(money, "foreign_amount", "%.2f" % amount)
+    rate = "%.4f" % config.AED_PER_USD if pegged(currency) else None
+    add(money, "foreign_exchange_rate", rate or missing("rate to AED on the day"))
     add_account(block, side + "_account", item[side + "_account"], currency)
     add(block, side + "_country", missing("country (KYC)"))
 
 
+def amount_in_aed(item: Dict) -> Optional[float]:
+    """The AED amount when a side is in USD (paid side first), else None."""
+    for side in ("from", "to"):
+        currency, amount = side_money(item, side)
+        if pegged(currency):
+            return amount * config.AED_PER_USD
+    return None
+
+
 def add_transaction(report: ET.Element, item: Dict, is_alert: bool) -> None:
     """One evidence row as a goAML-style transaction."""
+    local = amount_in_aed(item)
+    reference = "IBM EdgeID %d" % item["transaction_id"]
+    if local is not None:
+        reference += "; amount_local at the AED peg, %.4f AED per USD" % (
+            config.AED_PER_USD
+        )
     block = ET.SubElement(report, "transaction")
     add(block, "transactionnumber", str(item["transaction_id"]))
-    add(block, "internal_ref_number", "IBM EdgeID %d" % item["transaction_id"])
+    add(block, "internal_ref_number", reference)
     add(block, "transaction_location", missing("branch or channel"))
     what = "alert transaction" if is_alert else "cited by the case note"
     add(block, "transaction_description", "%s, %s" % (item["payment_format"], what))
     add(block, "date_transaction", item["time"].replace(" ", "T") + ":00")
     add(block, "transmode_code", missing("FIU code for %s" % item["payment_format"]))
-    add(block, "amount_local", missing("amount in %s" % config.GOAML_LOCAL_CURRENCY))
+    aed = "%.2f" % local if local is not None else None
+    add(
+        block,
+        "amount_local",
+        aed or missing("amount in %s" % config.GOAML_LOCAL_CURRENCY),
+    )
     add_side(block, "from", item)
     add_side(block, "to", item)
 
@@ -133,16 +164,45 @@ def add_header(report: ET.Element, alert: Dict, submitted: str) -> None:
         add(location, field, missing("reporting entity %s" % field.replace("_", " ")))
 
 
-def add_parties(report: ET.Element, note: Optional[Dict], evidence: Dict) -> None:
-    """The note's key accounts (or the alert's sender) as report parties."""
+def party_accounts(
+    note: Optional[Dict], evidence: Dict, typology: str
+) -> List[Tuple[str, str, str]]:
+    """(account, currency, reason) per report party.
+
+    The note's key accounts, plus, for a confirmed FAN_IN, the senders of the
+    cited transactions, and for a confirmed FAN_OUT, their receivers.
+    """
     alert = evidence["alert_transaction"]
-    accounts = (note or {}).get("key_accounts") or [alert["from_account"]]
-    parties = ET.SubElement(report, "report_parties")
-    for account in accounts:
-        party = ET.SubElement(parties, "report_party")
-        add_account(party, "account", account, alert["payment_currency"])
+    keys = (note or {}).get("key_accounts") or [alert["from_account"]]
+    parties = [(a, alert["payment_currency"], "Named as a key account in the case "
+                "note") for a in keys]  # fmt: skip
+    role = config.GOAML_PARTY_ROLES.get(typology)
+    if role is None:
+        return parties
+    seen = set(keys)
+    side = "from" if role == "from_account" else "to"
+    for item in reported_transactions(evidence, note):
+        account = item[role]
+        if account not in seen:
+            seen.add(account)
+            reason = "%s of cited transaction %d (%s, analyst confirmed)" % (
+                "Sender" if side == "from" else "Receiver",
+                item["transaction_id"], typology,
+            )  # fmt: skip
+            parties.append((account, side_money(item, side)[0], reason))
+    return parties
+
+
+def add_parties(
+    report: ET.Element, note: Optional[Dict], evidence: Dict, typology: str
+) -> None:
+    """Report parties: key accounts, and fan members for a confirmed fan typology."""
+    block = ET.SubElement(report, "report_parties")
+    for account, currency, reason in party_accounts(note, evidence, typology):
+        party = ET.SubElement(block, "report_party")
+        add_account(party, "account", account, currency)
         add(party, "significance", missing("significance (analyst)"))
-        add(party, "reason", "Named as a key account in the case note")
+        add(party, "reason", reason)
 
 
 def draft_report(
@@ -164,7 +224,7 @@ def draft_report(
     alert_id = evidence["alert_transaction"]["transaction_id"]
     for item in reported_transactions(evidence, note):
         add_transaction(report, item, item["transaction_id"] == alert_id)
-    add_parties(report, note, evidence)
+    add_parties(report, note, evidence, escalation.get("typology_confirmed") or "")
     indicators = ET.SubElement(report, "report_indicators")
     typology = escalation.get("typology_confirmed")
     if typology:

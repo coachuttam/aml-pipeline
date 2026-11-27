@@ -15,7 +15,7 @@ from src.audit_log import (
     record_draft,
 )
 from src.goaml_check import missing_fields, validation_errors
-from src.goaml_draft import draft_xml, reason_text
+from src.goaml_draft import draft_xml, party_accounts, reason_text
 
 
 def txn(transaction_id: int, time: str, sender: str, receiver: str) -> dict:
@@ -81,7 +81,8 @@ def test_unknown_fields_are_placeholders_and_listed_once_per_kind():
     gaps = {g["field"]: g for g in missing_fields(draft())}
     assert gaps["SWIFT/BIC"]["count"] == 7  # 3 transactions x 2 sides + 1 party
     assert "reporting entity id (goAML registration)" in gaps
-    assert gaps["amount in AED"]["where"] == ["transaction/amount_local"]
+    assert "amount in AED" not in gaps  # every row pays in USD: AED at the peg
+    assert gaps["rate to AED on the day"]["count"] == 3  # the received EUR side
     assert "transaction/t_to/to_account/swift" in gaps["SWIFT/BIC"]["where"]
 
 
@@ -141,3 +142,63 @@ def test_only_a_named_typology_is_offered_for_confirmation():
     unclear = {**RECORD, "note": {**NOTE, "typology": config.UNCLEAR}}
     assert suggested_typology({"record": unclear}) is None
     assert suggested_typology({"record": None}) is None
+
+
+def test_usd_rows_get_their_aed_amount_and_rate_at_the_peg_others_stay_missing():
+    euro_only = {
+        **txn(20, "2022-09-09 02:00", "011/X", "066/V"),
+        "payment_currency": "Euro",
+    }  # paid and received in euros
+    evidence = {**EVIDENCE, "linked_transactions": [euro_only]}
+    note = {**NOTE, "cited_txn_ids": [10, 20]}
+    text = draft_xml(ALERT, evidence, {**RECORD, "note": note}, ESCALATED, WHEN)
+    blocks = text.decode().split("<transaction>")[1:]
+    assert "<amount_local>369.09</amount_local>" in blocks[0]  # 100.50 x 3.6725
+    assert "AED peg, 3.6725 AED per USD" in blocks[0]
+    assert "<foreign_exchange_rate>3.6725</foreign_exchange_rate>" in blocks[0]
+    assert "<amount_local>MISSING: amount in AED</amount_local>" in blocks[1]
+    assert "peg" not in blocks[1]
+    assert validation_errors(text) == []
+
+
+def parties(typology: str) -> list:
+    return [a for a, _, _ in party_accounts(NOTE, EVIDENCE, typology)]
+
+
+def test_a_confirmed_fan_in_adds_the_cited_senders_as_report_parties():
+    assert parties("FAN_IN") == ["011/X", "020/80016A780"]  # 10 from 020; 11, 12 from X
+
+
+def test_a_confirmed_fan_out_adds_the_cited_receivers_as_report_parties():
+    assert parties("FAN_OUT") == ["011/X", "044/Z", "033/Y"]  # by time: 11 then 12
+
+
+def test_other_or_unconfirmed_typologies_keep_the_key_accounts_only():
+    assert parties("CYCLE") == ["011/X"] and parties("") == ["011/X"]
+    text = draft({**ESCALATED, "typology_confirmed": "FAN_OUT"}).decode()
+    assert text.count("<report_party>") == 3
+    assert "Receiver of cited transaction 11 (FAN_OUT, analyst confirmed)" in text
+
+
+def test_the_saved_state_shows_whether_the_typology_was_confirmed():
+    from src.ui_goaml import saved_state_text
+
+    event = {"decision": "escalate", "time": "2026-11-27T10:00:00",
+             "typology_confirmed": "FAN_IN"}  # fmt: skip
+    assert saved_state_text(event) == (
+        "Saved decision: escalate at 2026-11-27 10:00:00 · typology confirmed: FAN_IN"
+    )
+    assert saved_state_text({**event, "typology_confirmed": ""}).endswith(
+        "typology not confirmed")  # fmt: skip
+
+
+def test_clearing_the_demo_log_archives_it_and_leaves_an_empty_log(tmp_path: Path):
+    from src.audit_log import clear_log
+
+    log = tmp_path / "audit_log.jsonl"
+    assert clear_log(log) is None  # nothing to clear
+    record_decision("A1", "close", "demo", "v", log)
+    archived = clear_log(log)
+    assert not log.exists() and read_decisions(log) == []
+    assert archived.parent.name == config.AUDIT_ARCHIVE_FOLDER
+    assert read_decisions(archived)[0]["alert_id"] == "A1"

@@ -6,6 +6,12 @@ and the typology the analyst confirmed (empty if none). A goAML draft line recor
 that a draft was made for an escalated alert: event "goaml_draft", how many
 placeholders it still has and whether the typology went in.
 
+Clearing the demo log (command line only, never from the UI) moves the file to
+artifacts/audit_log_archive/ with a time stamp, so nothing is lost:
+
+    python -m src.audit_log clear          # says what it would do
+    python -m src.audit_log clear --yes    # does it
+
 Example:
     record_decision("A0029", "close", "Looks like a payroll run", "v3")
     read_decisions()[-1]["decision"]   # "close"
@@ -13,6 +19,7 @@ Example:
 
 from __future__ import annotations
 
+import argparse
 import json
 from datetime import datetime
 from pathlib import Path
@@ -94,3 +101,37 @@ def current_escalation(alert_id: str, path: Optional[Path] = None) -> Optional[D
     """The decision event if the alert's latest decision is escalate, else None."""
     event = latest_decisions(path).get(alert_id)
     return event if event and event["decision"] == "escalate" else None
+
+
+def clear_log(
+    path: Optional[Path] = None, archive: Optional[Path] = None
+) -> Optional[Path]:
+    """Move the log to the archive folder (time-stamped); None if there is no log."""
+    path = path or default_path()
+    if not path.exists():
+        return None
+    archive = archive or path.parent / config.AUDIT_ARCHIVE_FOLDER
+    archive.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = archive / ("%s_%s%s" % (path.stem, stamp, path.suffix))
+    path.rename(target)
+    return target
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Clear the demo audit log.")
+    parser.add_argument("command", choices=["clear"])
+    parser.add_argument("--yes", action="store_true", help="really clear it")
+    arguments = parser.parse_args()
+    lines = len(read_decisions())
+    if not arguments.yes:
+        print("%d lines in %s. Run with --yes to move them to %s/."
+              % (lines, default_path(), config.AUDIT_ARCHIVE_FOLDER))  # fmt: skip
+        return
+    target = clear_log()
+    print("Nothing to clear." if target is None else
+          "Moved %d lines to %s; the log is empty." % (lines, target))  # fmt: skip
+
+
+if __name__ == "__main__":
+    main()

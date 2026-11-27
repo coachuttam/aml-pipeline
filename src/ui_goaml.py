@@ -16,7 +16,12 @@ import pandas as pd
 import streamlit as st
 
 from src import config
-from src.audit_log import current_escalation, record_decision, record_draft
+from src.audit_log import (
+    current_escalation,
+    latest_decisions,
+    record_decision,
+    record_draft,
+)
 from src.goaml_check import missing_fields, validation_errors
 from src.goaml_draft import draft_xml
 
@@ -49,7 +54,20 @@ def decision_form(alert_id: str, bundle: dict, show_status) -> None:
         record_decision(alert_id, decision, comment, config.UI_NOTE_VERSION,
                         typology_confirmed=typology if confirmed else "")  # fmt: skip
         st.success("Saved %s for %s." % (decision, alert_id))
+    saved = latest_decisions().get(alert_id)
+    if saved:
+        st.caption(saved_state_text(saved))
     goaml_section(alert_id, bundle)
+
+
+def saved_state_text(event: dict) -> str:
+    """The saved decision as the log has it, with its typology confirmation."""
+    typology = event.get("typology_confirmed")
+    confirmed = ("typology confirmed: %s" % typology) if typology else (
+        "typology not confirmed")  # fmt: skip
+    return "Saved decision: %s at %s · %s" % (
+        event["decision"], event["time"].replace("T", " "), confirmed,
+    )  # fmt: skip
 
 
 def make_draft(alert_id: str, bundle: dict, escalation: dict) -> dict:
