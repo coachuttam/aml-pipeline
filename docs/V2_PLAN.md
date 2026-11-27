@@ -4,10 +4,37 @@ The note writer is done: the frozen `typology2` student (final test run once, se
 
 ## 1. GNN scores and edge colours
 
-- **What:** the LI-Small fine-tuned Multi-PNA + EU from `~/aml-gnn-transfer` (Phase D, 100% labels) scores every edge in each alert's evidence. Its checkpoint is read, never edited. The score is shown next to the LightGBM score, and the network graph colours each edge by GNN score.
-- **How:** run a one-off export on Colab with the existing checkpoint (`gnn_scores.parquet`: transaction_id → score, test period only). Then `src/gnn_scores.py` joins it to the evidence, and `ui_graph.py` colours the edges on a sequential scale. The alert edge stays red and the cited edges keep their outline.
-- **Rules:** LightGBM keeps the priority. The GNN score is a second opinion, not a re-ranking. The threshold for "high" comes from GNN validation, not test. The student's input does not change (adding the score would bring back the shortcut from the first student).
-- **Measure:** for each alert, the share of pattern edges among the top-GNN-scored evidence edges (evaluation only). It is reported, not tuned.
+**Done (export, not yet run):** `notebooks/gnn_scores_colab.ipynb` with `src/gnn_export.py` scores every LI-Small validation and test transaction with `pna_finetune_f1.0_s0` and writes `gnn_scores.parquet` (transaction_id, score, period; no label). Copy it to `artifacts/` (git-ignored).
+
+**Join** (`src/gnn_scores.py`, CPU, with tests on made-up data):
+
+- Read the parquet into id -> (score, period). The ids are IBM EdgeIDs, the same as `transaction_id` in the evidence, so the join is a plain lookup.
+- **Coverage check before use:** every alert transaction (all in the test period) and every evidence row from 2022-09-07 on must have a score. A missing id means the id mapping is wrong, so stop.
+- **Training-period rows stay unscored.** 1,663 of the 10,182 evidence rows (16%, in 116 alerts) are before 2022-09-07, in the GNN's training period. Its score there comes from a model that learned those rows' labels, so showing it would leak labels into the UI. They are drawn grey: "not scored (GNN training period)".
+- For each alert: the alert transaction's GNN score, its percentile among all test-period GNN scores, and a band. "High" means at least 0.698, the best-F1 threshold chosen on validation in aml-gnn-transfer (`config.GNN_HIGH_THRESHOLD`); otherwise "low".
+
+**UI:**
+
+- **Alert detail header:** "GNN second opinion: 0.93, high (top 0.4% of test). Priority is set by the LightGBM score." The queue gets a `gnn_score` column; the default sort stays `priority_rank`.
+- **Network graph:** a toggle "Colour edges by: note citations (default) | GNN score".
+  - In GNN mode, edges use one sequential scale from 0 to 1 (light to dark), and edges at or above the threshold are drawn thicker. Unscored edges are grey and dashed. The alert edge keeps a red outline in both modes.
+  - **Legend:** a colour bar labelled "GNN laundering score (0-1)", a tick at 0.698 marked "high (threshold from validation)", and a grey dashed sample marked "not scored: GNN training period".
+  - The hover text adds "GNN 0.81".
+- **Evidence table:** a `gnn_score` column, blank for unscored rows.
+
+**Rules:**
+
+- LightGBM keeps the priority: the GNN neither re-ranks alerts nor removes any.
+- The student's input and the case note do not change. Adding a score would bring back the shortcut that broke the first student.
+- Nothing is tuned on test: the threshold comes from validation, and the run was chosen by validation F1.
+
+**Report (evaluation only, after the UI works):**
+
+- How many of the 200 alerts the GNN calls high, among laundering alerts and among false alarms.
+- Agreement with LightGBM (rank correlation).
+- For laundering alerts, the share of pattern edges among the evidence edges the GNN scores highest.
+
+These are stated with their n and are not used to choose anything.
 
 ## 2. goAML draft
 

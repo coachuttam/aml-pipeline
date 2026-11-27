@@ -246,3 +246,8 @@ NOTE_WRITERS = {
 }  # writer -> (notes file in artifacts/, version recorded in the audit log)
 NOTE_WRITER = os.environ.get("AML_PIPELINE_NOTE_WRITER", "student")  # V2 default
 UI_NOTES_FILE, UI_NOTE_VERSION = NOTE_WRITERS[NOTE_WRITER]  # what the UI shows
+
+# V2 step 1: GNN second opinion (scores exported on Colab by src/gnn_export.py).
+GNN_RUN_ID = "pna_finetune_f1.0_s0"  # aml-gnn-transfer Phase D, best validation F1
+GNN_SCORES_FILE = "gnn_scores.parquet"  # in artifacts/: transaction_id, score, period
+GNN_HIGH_THRESHOLD = 0.698430597782135  # best-F1 threshold, chosen on validation there

@@ -191,6 +191,26 @@ The `typology2` student was run once on the 200 LI-Small test alerts (v1 evidenc
 
 **Remaining V2 steps** (short plan in [docs/V2_PLAN.md](docs/V2_PLAN.md)): 1. GNN scores and edge colours; 2. goAML draft; 3. offline GGUF / Ollama demo.
 
+## V2 step 1: GNN second opinion (export ready, not run)
+
+**What aml-gnn-transfer saved** (read only; its records are in `results/phases/`, its checkpoints on Drive under `MyDrive/aml-gnn-transfer/<set>/models/<run_id>/checkpoint_True_finetuned.tar`). LI-Small minority F1:
+
+| Fine-tuned run | Labels | Seed | Validation F1 | Test F1 |
+| --- | --- | --- | --- | --- |
+| **PNA `pna_finetune_f1.0_s0`** (phaseD) | 100% | 0 | **0.332** | 0.367 |
+| PNA `pna_finetune_f0.25_s0` (phaseD) | 25% | 0 | 0.286 | 0.358 |
+| PNA `pna_finetune_f0.1_s0` (phaseD) | 10% | 0 | 0.273 | 0.327 |
+| GIN `gin_finetune_f1.0_s0_b20` (phaseA) | 100% | 0 | 0.303 | 0.349 |
+| GIN `gin_finetune_f1.0_s1` (phaseC) | 100% | 1 | 0.276 | 0.344 |
+| GIN `gin_finetune_f0.25_s0` / `_s1` (phaseC) | 25% | 0 / 1 | 0.261 / 0.279 | 0.336 / 0.256 |
+| GIN `gin_finetune_f0.1_s0` / `_s1` (phaseC) | 10% | 0 / 1 | 0.237 / 0.238 | 0.305 / 0.291 |
+
+All runs are `completed`. The chosen model is the PNA with 100% of labels, **chosen by validation F1** (it also has the best test F1, but test was not used to choose). It has one seed only. For comparison, our LightGBM detector has test F1 0.216.
+
+**Export:** `notebooks/gnn_scores_colab.ipynb` runs `src/gnn_export.py` (self-contained, uploaded to Drive) inside a fresh clone of aml-gnn-transfer at commit `5fe1302`. It reuses that repo's loaders and checkpoint loading, and keeps the id of every scored edge. Multi-GNN's edge k is row k of the time-sorted `formatted_transactions.csv`, whose EdgeID is our `transaction_id`. Output: `gnn_scores.parquet` with transaction_id, score and period, for validation and test (2.49M rows, no label). As a check that the right model loaded, the script recomputes validation and test F1 and prints them beside the record (0.332 / 0.367, tolerance 0.01). Estimate, not measured: 25-35 min on an L4 (about 0.5 h, ~1 unit), mostly environment setup; the scoring itself took 249 s in the original run.
+
+**Join and colours:** planned in [docs/V2_PLAN.md](docs/V2_PLAN.md). LightGBM keeps the priority; the GNN is a second opinion in the header, the queue, the evidence table and an optional edge colouring with a legend. 1,663 of 10,182 evidence rows (16%) fall in the GNN's training period and stay unscored (grey), because their scores would reflect labels the model was trained on.
+
 ## Run
 
 ```bash
