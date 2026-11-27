@@ -6,7 +6,7 @@ Docs: [PRD](PRD.md) · [Architecture](ARCHITECTURE.md) · [Agent rules](AGENTS.m
 
 ## Step 1 result
 
-The detector is the final LightGBM from [aml-gnn-transfer](../aml-gnn-transfer) (Phase E, a simple baseline). Retrained here, it reproduces that record exactly (test minority F1 0.2155, PR-AUC 0.1175).
+The detector is the final LightGBM from [aml-gnn-transfer](../aml-gnn-transfer) (Project 4; Phase E, a simple baseline). Retrained here, it reproduces that record exactly (test minority F1 0.2155, PR-AUC 0.1175).
 
 - **200 alerts**, the highest-scored test transactions, each with a score and five SHAP reason codes: `artifacts/alerts.parquet`.
 - **53 of the 200 (26.5%) are laundering** (precision@100 over the whole test period is 0.44). The validation threshold flags 479 test transactions in all; the top 200 are all above it.
@@ -42,7 +42,7 @@ Prompt v3 (v2's typology definitions, no decision, questions) was checked on the
 
 Typology accuracy is poor: about one in four, so the typology is a hint for the analyst, not a result. The fact check is what makes the notes usable: 183 of 200 notes had every cited id, account and amount in the evidence, and the other 17 are flagged for review. Prompts v1 and v2 are kept for the record but target the old schema (with a decision).
 
-## V2 step 1: fine-tuning data for the case-note model
+## V2 step 1: fine-tuning data for the case-note model (Project 3)
 
 A teacher (`gpt-4.1-mini`, temperature 0) writes gold case notes for HI-Small alerts. It sees the student's exact input plus a `PRIVILEGED_TRUTH` block (typology and pattern transaction ids, or "not laundering"); the student never does (documented exception in AGENTS.md). Alerts are the top-scored HI-Small validation and test transactions from the same LightGBM; LI-Small test alerts are never used for training. A teacher note is kept only if it passes the fact check, uses the typology it was given and cites the pattern transactions.
 
@@ -193,7 +193,7 @@ The `typology2` student was run once on the 200 LI-Small test alerts (v1 evidenc
 
 ## V2 step 1: GNN second opinion (export ready, not run)
 
-**What aml-gnn-transfer saved** (read only; its records are in `results/phases/`, its checkpoints on Drive under `MyDrive/aml-gnn-transfer/<set>/models/<run_id>/checkpoint_True_finetuned.tar`). LI-Small minority F1:
+**What Project 4 (aml-gnn-transfer) saved** (read only; its records are in `results/phases/`, its checkpoints on Drive under `MyDrive/aml-gnn-transfer/<set>/models/<run_id>/checkpoint_True_finetuned.tar`). LI-Small minority F1:
 
 | Fine-tuned run | Labels | Seed | Validation F1 | Test F1 |
 | --- | --- | --- | --- | --- |
@@ -209,7 +209,7 @@ All runs are `completed`. The chosen model is the PNA with 100% of labels, **cho
 
 **Export:** `notebooks/gnn_scores_colab.ipynb` runs `src/gnn_export.py` (self-contained, uploaded to Drive) inside a fresh clone of aml-gnn-transfer at commit `5fe1302`. It reuses that repo's loaders and checkpoint loading, and keeps the id of every scored edge. Multi-GNN's edge k is row k of the time-sorted `formatted_transactions.csv`, whose EdgeID is our `transaction_id`. Output: `gnn_scores.parquet` with transaction_id, score and period, for validation and test (2.49M rows, no label). **Fix after the first Colab run** ("Scored edges differ from the period's edges"): Multi-GNN's loader starts a batch from each seed's two accounts and samples a capped number of their edges, so a busy account's own seed edge can be left out of its batch. Multi-GNN adds such edges back only for its Small_J / Small_Q data, and aml-gnn-transfer's scorer does not, so those edges were never scored, and **the recorded F1 covers only the edges the sampler kept**. The export now adds them back the same way Multi-GNN does (the forward edge only), flags them in an `added` column, and still stops unless every edge of the period is scored exactly once. If not, it prints the expected, scored, missing, extra and duplicate counts with 5 examples each. As a check that the right model loaded, F1 on the sampled edges only is compared with the record (0.332 / 0.367, tolerance 0.01); F1 on all edges is printed beside it. Estimate, not measured: 25-35 min on an L4 (about 0.5 h, ~1 unit), mostly environment setup; the scoring itself took 249 s in the original run.
 
-**Export result:** 2,491,115 scores (1,316,442 validation, 1,174,673 test), 0 missing, extra or duplicate; the sampler had dropped 26 validation and 1,412 test edges, now added back. **The aml-gnn-transfer F1 is unchanged when the sampler-dropped edges are added back: 0.332 validation / 0.367 test, on the sampled edges and on all edges alike.**
+**Export result:** 2,491,115 scores (1,316,442 validation, 1,174,673 test), 0 missing, extra or duplicate; the sampler had dropped 26 validation and 1,412 test edges, now added back. **The Project 4 (aml-gnn-transfer) F1 is unchanged when the sampler-dropped edges are added back: 0.332 validation / 0.367 test, on the sampled edges and on all edges alike.**
 
 **Built:** `src/gnn_scores.py` joins the scores to the 200 alerts. Of the 10,182 evidence rows, 8,519 are scored and 1,663 are in the GNN's training period and stay unscored; no row from 2022-09-07 on lacks a score (`python -m src.gnn_scores` checks this). In the UI:
 - **Alert detail:** a header "GNN second opinion: 0.93, high (top x% of test). Priority is set by the LightGBM score." and a `gnn_score` column in the evidence table.

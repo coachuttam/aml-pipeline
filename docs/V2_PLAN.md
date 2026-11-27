@@ -1,6 +1,6 @@
 # V2: remaining steps (plan only)
 
-The note writer is done: the frozen `typology2` student (final test run once, see README). The three remaining steps, in order. Each step comes with tests and a README section, and none touches the frozen adapter or re-scores test.
+The note writer is done: the frozen `typology2` student (Project 3) (final test run once, see README). The three remaining steps, in order. Each step comes with tests and a README section, and none touches the frozen adapter or re-scores test.
 
 ## 1. GNN scores and edge colours
 
@@ -11,7 +11,7 @@ The note writer is done: the frozen `typology2` student (final test run once, se
 - Read the parquet into id -> (score, period). The ids are IBM EdgeIDs, the same as `transaction_id` in the evidence, so the join is a plain lookup.
 - **Coverage check before use:** every alert transaction (all in the test period) and every evidence row from 2022-09-07 on must have a score. A missing id means the id mapping is wrong, so stop.
 - **Training-period rows stay unscored.** 1,663 of the 10,182 evidence rows (16%, in 116 alerts) are before 2022-09-07, in the GNN's training period. Its score there comes from a model that learned those rows' labels, so showing it would leak labels into the UI. They are drawn grey: "not scored (GNN training period)".
-- For each alert: the alert transaction's GNN score, its percentile among all test-period GNN scores, and a band. "High" means at least 0.698, the best-F1 threshold chosen on validation in aml-gnn-transfer (`config.GNN_HIGH_THRESHOLD`); otherwise "low".
+- For each alert: the alert transaction's GNN score, its percentile among all test-period GNN scores, and a band. "High" means at least 0.698, the best-F1 threshold chosen on validation in aml-gnn-transfer (Project 4) (`config.GNN_HIGH_THRESHOLD`); otherwise "low".
 
 **UI:**
 

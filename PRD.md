@@ -16,7 +16,7 @@ One pipeline on IBM's synthetic LI-Small data: **detect -> explain -> evidence -
 | --- | --- |
 | AML analyst (the user the UI imitates) | Top alerts with plain reasons, linked transactions, a draft case note to edit |
 | Reviewer or hiring manager | Evidence that the owner can build an explainable pipeline end to end and test it honestly |
-| Owner | A portfolio project that joins Project 1 (LLM case notes), Project 2 (LightGBM, features) and Project 3 (GNN transfer) |
+| Owner | A portfolio project that joins Project 1 (LLM case notes), Project 2 (LightGBM, features), Project 3 (fine-tuned case-note student) and Project 4 (GNN transfer, aml-gnn-transfer) |
 
 ## 4. Steps and requirements
 
