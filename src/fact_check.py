@@ -1,7 +1,11 @@
 """Check a case note against its own evidence file.
 
-A violation is a cited transaction id, a named account or an amount that is not in
-the evidence. Notes are checked, never repaired.
+A violation is a cited transaction id, a named account, an amount (two decimals or
+one, as in "13,775.6") or a date ("2022-09-07") that is not in the evidence. Numbers
+with a scale ("4.8 million", "2.5%") are not amounts at face value and are skipped.
+Counts ("two payments") are not checked: the gold teacher notes say "two payments"
+while citing one id in 237 of 307 such phrases, so a count rule would flag wording,
+not invented facts. Notes are checked, never repaired.
 
 Example:
     violations = check_note(note, evidence)   # [] when every fact is in the evidence
@@ -17,7 +21,12 @@ from src.case_note_input import evidence_transactions
 from src.totals import totals_by_currency
 
 CITED_IDS_IN_TEXT = re.compile(r"txns?\s+((?:\d+(?:,\s*|\s+and\s+|\s*))+)")
-MONEY_IN_TEXT = re.compile(r"\d[\d,]*\.\d{2}\b")  # "10,917.92": a decimal amount
+# "10,917.92" or "13,775.6": a decimal amount, not part of a longer number, no scale.
+MONEY_IN_TEXT = re.compile(
+    r"(?<![\d.,])\d[\d,]*\.\d{1,2}"
+    r"(?!\d|\.\d|\s*%|\s+(?:million|billion|thousand|percent|times)\b)"
+)
+DATE_IN_TEXT = re.compile(r"\b20\d\d-\d\d-\d\d\b")  # "2022-09-07", as in the evidence
 
 
 def _evidence_amounts(transactions: List[Dict]) -> Set[float]:
@@ -75,6 +84,19 @@ def _check_text_amounts(
     ]
 
 
+def _check_text_dates(note: Dict, transactions: List[Dict]) -> List[str]:
+    """Each date written in the text must be the date of an evidence transaction."""
+    known = {t.get("time", "")[:10] for t in transactions}
+    text = " ".join(
+        note["red_flags"] + note["investigator_questions"] + [note["reason"]]
+    )
+    return [
+        "date %s in text not in evidence" % d
+        for d in DATE_IN_TEXT.findall(text)
+        if d not in known
+    ]
+
+
 def check_note(note: Dict, evidence: Dict) -> List[str]:
     """All violations of one note (empty list = every fact checks out)."""
     transactions = evidence_transactions(evidence)
@@ -84,6 +106,7 @@ def check_note(note: Dict, evidence: Dict) -> List[str]:
         + _check_accounts(note, transactions)
         + _check_text_ids(note, by_id)
         + _check_text_amounts(note, transactions, by_id)
+        + _check_text_dates(note, transactions)
     )
 
 

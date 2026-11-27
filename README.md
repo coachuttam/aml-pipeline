@@ -105,7 +105,7 @@ Notebook (`RUN_NAME = "typology2"`): trains on `train_v3.jsonl` for 2 epochs, th
 
 ### `typology2` results and review
 
-HI-Small val: typology 12/20 (gate passed). LI-Small dev: typology 3/19 on visible patterns, "unclear" on 20/21 false alarms and 0/19 visible patterns, invented facts 17/1,391 claims, JSON 50/50. Not scored on test. `python -m src.run_review confusion|invented|evidence2` (CPU, report in `data/finetune/review.json`):
+HI-Small val: typology 12/20, "unclear" on 16/20 false alarms (val gate passed), invented facts 2/1,036 claims (fixed check). LI-Small dev: typology 3/19 on visible patterns, "unclear" on 20/21 false alarms and 0/19 visible patterns, invented facts 17/1,391 claims with the old check, 18/1,391 with the fixed one (below), JSON 50/50. **Dev gate missed** (3/19; dev was not formally gated, but this is far below val). `python -m src.run_review confusion|invented|evidence2` (CPU, report in `data/finetune/review.json`):
 
 Confusion, HI-Small val (rows true, columns predicted; "unclear (thin)" = laundering whose pattern the evidence does not show):
 
@@ -133,7 +133,7 @@ Confusion, LI-Small dev:
 
 The fan typologies are learned; the two-stage ones are not: SCATTER_GATHER is 0/3 on val and 0/5 on dev (read as FAN_IN), GATHER_SCATTER 1/3 and 2/11 (dev: mostly read as FAN_OUT), CYCLE 1/4 (read as RANDOM). Dev is 11/19 GATHER_SCATTER, so this weakness costs most there. Dev evidence had no hop-2 rows, so the second stage of a pattern was rarely visible.
 
-Invented facts on dev (17, in 4 of 50 notes): 14 transaction ids (13 in the text, 1 in `cited_txn_ids`), 3 amounts, 0 accounts. 13 of the ids continue a run of consecutive evidence ids by 1-2 (for example 3971603 when the evidence has 3971604-3971609; 10 of them in one note, A0001); 1 is 6 below such a run. The 3 amounts (A0040) are evidence amounts with the decimal point moved one place (295,474.62 written as 29,547.46). Counts and dates are not fact-checked, so none can be counted. The check also misses amounts with one decimal: A0040's "19,969,689.1" (1,996,968.91 moved) is a further invented amount not in the 17.
+Invented facts on dev (17, in 4 of 50 notes): 14 transaction ids (13 in the text, 1 in `cited_txn_ids`), 3 amounts, 0 accounts. 13 of the ids continue a run of consecutive evidence ids by 1-2 (for example 3971603 when the evidence has 3971604-3971609; 10 of them in one note, A0001); 1 is 6 below such a run. The 3 amounts (A0040) are evidence amounts with the decimal point moved one place (295,474.62 written as 29,547.46). Counts and dates are not fact-checked, so none can be counted. The old check missed amounts with one decimal: A0040's "19,969,689.1" (1,996,968.91 moved) was a further invented amount; the fixed check catches it (18).
 
 ### Evidence v2 (dev and test inputs only, no retraining)
 
@@ -150,6 +150,20 @@ Strategy `capped`: the nearest in time as before, but at most 35 hop-1 and 15 ho
 | always GATHER_SCATTER | 11/19 | 9/16 | 10/37 | 10/37 | |
 
 v2 gives dev the hop mix train had, but it **lowers pattern coverage** (dev 0.278 to 0.217, 3 fewer visible patterns; test 0.491 to 0.466): for these hub alerts more of the pattern sat in hop-1 rows 36-50 than in the 15 hop-2 rows that replace them. The rule baseline does not beat the constant on either version. Whether the student does better on v2 (closer to its training input) is not known until it is run on `dev_inputs_v2.jsonl`; the dev scoring for v2 needs `pattern_visible` from v2 evidence, which `score_student` does not compute yet.
+
+### Decision: freeze `typology2` and run test once
+
+The dev result misses: 3/19, below always-GATHER_SCATTER (11/19), the rule baseline (11/19) and V1 prompt v3 (5/19). The student did not learn the two-stage patterns (GATHER_SCATTER, SCATTER_GATHER), and dev is 11/19 GATHER_SCATTER. Evidence v2 is not used (dev v2 skipped: it lowered pattern coverage). Frozen: the `typology2` adapter and the v1 test inputs (`data/finetune/test_inputs.jsonl`, md5 `fe604b2b37bfa403a0c7f53d2ceb8792`, all 200 match `artifacts/evidence/`). Test is the final evaluation, run once; nothing changes after it, whatever the result.
+
+**Fact check fixed before test** (`src/fact_check.py`): amounts with one decimal ("13,775.6") are now checked, numbers with a scale ("4.8 million", "2.5%") are skipped, and ISO dates in the text must be dates of evidence transactions. Counts are not checked: in gold teacher notes "two payments" cites one id in 237 of 307 such phrases, so a count rule would flag wording. On the 2,180 gold teacher notes the fixed check flags 1 ("totaling 15790.4 EUR"). Val and dev were re-scored with it (numbers above).
+
+**Scoring test (on a CPU, once):**
+
+```bash
+python -m src.score_student --set test --raw data/finetune/test_raw_Qwen2.5-7B-Instruct_typology2.jsonl
+```
+
+It refuses any file but the `typology2` run's, and refuses a second scoring (`artifacts/student_vs_baselines.json` exists). The report gives the student's typology on visible patterns, "unclear" on false alarms, invented facts and JSON validity, beside always-GATHER_SCATTER, the rule baseline (settings fixed from dev: 24 h, 4 counterparties, hub with 1 payer; `RULE_SETTINGS_FROM_DEV`) and V1 prompt v3 (gpt-4.1-mini) re-checked with the fixed fact check. V1 v3 saw the model score and SHAP reasons as well as the evidence; the student saw the evidence only. The notebook's test cell reads `test_inputs.jsonl` and writes `test_raw_Qwen2.5-7B-Instruct_typology2.jsonl` with the `typology2` adapter; it resumes only from that file, so the old `evidence1` answers are never read. After a restart, run only the settings cell and the test cell.
 
 ## Run
 

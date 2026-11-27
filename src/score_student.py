@@ -5,6 +5,12 @@
     python -m src.score_student --set val  --raw data/finetune/val_raw_<run>.jsonl
 
 For val it also prints the gate (src/finetune_v3.val_gate): run dev only if it passed.
+Every set also gets the baselines beside it (src/baselines.py: always GATHER_SCATTER,
+rules with settings from dev, V1 prompt v3 where its notes exist), saved as
+student_vs_baselines.json in the alert folder.
+
+Test is the final evaluation of the frozen student: it is scored only from the
+FROZEN_STUDENT_RUN answer file, and only once (refused if already scored).
 
 Each answer is parsed (every field must be there), fact-checked against its own
 evidence file, and written as `notes_student.json` in the alert folder
@@ -25,6 +31,7 @@ from typing import Dict, List
 import pandas as pd
 
 from src import config
+from src.baselines import comparison
 from src.case_note_input import evidence_transactions
 from src.eval_v2 import score_file
 from src.fact_check import check_note, count_claims
@@ -76,6 +83,22 @@ def score_set(folder: Path, raw_path: Path) -> Dict:
     return report
 
 
+COMPARISON_FILE = "student_vs_baselines.json"
+
+
+def refuse_test_rescore(raw_path: Path, folder: Path) -> None:
+    """Stop unless the answers are the frozen run's and test was never scored."""
+    if not raw_path.name.endswith("_%s.jsonl" % config.FROZEN_STUDENT_RUN):
+        raise SystemExit(
+            "Test is scored only from the frozen run %r: got %s"
+            % (config.FROZEN_STUDENT_RUN, raw_path.name)
+        )
+    if (folder / COMPARISON_FILE).exists():
+        raise SystemExit(
+            "Test was already scored once: %s" % (folder / COMPARISON_FILE)
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--set", choices=["dev", "test", "val"], required=True)
@@ -86,9 +109,13 @@ def main() -> None:
         folder = folder / config.FINETUNE_DEV_FOLDER
     if arguments.set == "val":
         folder = config.FINETUNE_DIR / config.FINETUNE_VAL_FOLDER
-    report = score_set(folder, arguments.raw)
+    if arguments.set == "test":
+        refuse_test_rescore(arguments.raw, folder)
+    report = {"student": score_set(folder, arguments.raw)}
     if arguments.set == "val":
-        report["gate"] = val_gate(report)
+        report["gate"] = val_gate(report["student"])
+    report.update(comparison(folder))
+    (folder / COMPARISON_FILE).write_text(json.dumps(report, indent=1) + "\n")
     print(json.dumps(report, indent=1))
 
 

@@ -219,3 +219,8 @@ VAL_GATE_MIN_TYPOLOGY_CORRECT = 10  # of 20 visible-pattern val alerts, before d
 VAL_GATE_MIN_UNCLEAR_FALSE_ALARMS = 0.5  # share of val false alarms said "unclear"
 EVAL_SPEEDUP = 3  # a forward-only validation pass costs about a third of a train step
 CHAT_TEMPLATE_TOKENS = 20  # role markers Qwen's chat template adds per example
+
+# Final evaluation of the frozen student (typology2 adapter, v1 evidence inputs).
+FROZEN_STUDENT_RUN = "typology2"  # the only run whose test answers may be scored
+RULE_SETTINGS_FROM_DEV = (24, 4, 1)  # window h, degree, hub payers: best on dev v1
+V1_COMPARISON_NOTES = "notes_step2_v3.json"  # gpt-4.1-mini, prompt v3, same alerts
