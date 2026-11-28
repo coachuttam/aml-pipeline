@@ -14,3 +14,4 @@ artifacts/*
 .env
 kaggle.json
 .DS_Store
+.archify/

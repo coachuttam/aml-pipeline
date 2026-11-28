@@ -8,6 +8,10 @@ Transaction monitoring produces far more alerts than analysts can review, and mo
 
 ## How it works
 
+![AML pipeline architecture](docs/architecture.png)
+
+[Open the interactive diagram](https://coachuttam.github.io/aml-pipeline/architecture.html)
+
 ```mermaid
 flowchart LR
   A[Transactions] --> B[LightGBM score<br/>+ SHAP reasons]
