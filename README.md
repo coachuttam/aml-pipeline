@@ -12,20 +12,6 @@ Transaction monitoring produces far more alerts than analysts can review, and mo
 
 [Open the interactive diagram](https://coachuttam.github.io/aml-pipeline/architecture.html)
 
-```mermaid
-flowchart LR
-  A[Transactions] --> B[LightGBM score<br/>+ SHAP reasons]
-  B --> C[Evidence:<br/>linked transactions]
-  C --> D[Student case note<br/>Qwen2.5-7B + LoRA]
-  D --> E[Fact check:<br/>ids, accounts, amounts, dates]
-  B --> G[GNN second opinion<br/>edge scores]
-  E --> F{Analyst:<br/>escalate / close,<br/>confirm typology}
-  G --> F
-  F -->|escalate| H[goAML-style STR draft<br/>never auto-filed]
-  F --> I[(Audit log)]
-  H --> I
-```
-
 LightGBM sets the priority. The GNN is shown beside it as a second opinion, and the case note suggests a typology. The analyst decides everything.
 
 ## Results (LI-Small test, 200 alerts, scored once)
